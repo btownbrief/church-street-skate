@@ -25,11 +25,13 @@
     <button class="tb big" id="b-ollie">OLLIE</button>
   </div>
 </div>
+<div id="hint" aria-hidden="true"><b>Push</b> — flick the stick up · <b>OLLIE</b> — hold, then let go</div>
 <div id="screen-title" class="screen on">
   <div class="card">
     <div class="eyebrow">Burlington, Vermont</div>
     <h1>Church Street<br>Skate</h1>
     <p class="sub">Four blocks of brick, the hill down to the lake, City Hall steps, the planters everybody grinds anyway.</p>
+    <p class="fineprint">Burlington ordinance §27-18: skateboarding on the bricks is, technically, a trespass. The traveled portions of College, Bank and Cherry are exempt. Good luck.</p>
     <button id="btn-play" class="primary">Skate</button>
     <div id="how" class="how"></div>
     <div id="loading" class="loading">Building Burlington…</div>
@@ -41,7 +43,10 @@
     <h2>Paused</h2>
     <div id="stats"></div>
     <div class="row"><button id="btn-resume" class="primary">Resume</button><button id="btn-respawn">Back to Church St</button><button id="btn-mute">Sound: on</button></div>
+    <h3 class="secttl">Burlington spots</h3>
     <div id="spots-list" class="spots"></div>
+    <h3 class="secttl">Challenges</h3>
+    <div id="chal-list" class="chals"></div>
   </div>
 </div>
 <script type="module" src="js/main.js"></script>

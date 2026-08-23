@@ -8,7 +8,9 @@ import { FollowCamera } from './camera.js';
 import { Hud } from './hud.js';
 import { Audio } from './audio.js';
 import { buildWorld } from './world.js';
+import { Challenges } from './challenges.js';
 import { isMobile, isTouch } from './util.js';
+import { installDev } from './devhooks.js';
 
 const $ = (s) => document.querySelector(s);
 const mobile = isMobile(); const touch = isTouch();
@@ -28,8 +30,9 @@ scene.add(camera);
 
 const input = new Input();
 const audio = new Audio();
-let world, skater, mesh, follow, hud, running = false, paused = false, last = performance.now(), fpsAcc = 0, fpsN = 0, lowFpsT = 0;
+let world, skater, mesh, follow, hud, chal, running = false, paused = false, last = performance.now(), fpsAcc = 0, fpsN = 0, lowFpsT = 0;
 let locTimer = 0, curLoc = '';
+let autopilot = null, evTap = null;   // headless-playtest hooks (js/devhooks.js)
 
 const how = touch
   ? `<b>Left side</b>: drag to steer, push up to skate · <b>OLLIE</b> hold &amp; release for height · <b>FLIP</b>/<b>SHOVE</b> in the air (both = 360 flip) · steer in the air to spin · land on ledges &amp; rails to grind, steer to balance · <b>GRAB</b> in the air, hold it through the landing to manual`
@@ -41,8 +44,10 @@ async function boot() {
   try {
     world = await buildWorld({ scene, renderer, camera, quality });
   } catch (e) { console.error(e); $('#loading').textContent = 'Something broke while building the city: ' + e.message; throw e; }
+  window.__world = world;
   const sp = world.spawn;
   skater = new Skater(world.collide, sp); skater.spots = world.spots;
+  chal = new Challenges(skater);
   mesh = new SkaterMesh(scene, quality.shadows);
   follow = new FollowCamera(camera, world.collide); follow.reset(skater);
   hud = new Hud($('#hud'), world.info);
@@ -51,10 +56,16 @@ async function boot() {
   $('#loading').textContent = `Downtown loaded — ${world.stats}`;
   $('#btn-play').disabled = false;
   renderer.render(scene, camera);
+  installDev({ world, skater, follow, camera, renderer, scene, input, step: stepGame,
+    setAutopilot: (f) => { autopilot = f; }, setTap: (f) => { evTap = f; },
+    setRunning: (v) => { running = v; }, setLoc: (v) => { curLoc = v; }, getLoc: () => curLoc });
 }
 
 function start() {
-  audio.ensure(); $('#screen-title').classList.remove('on'); running = true; paused = false; last = performance.now(); requestAnimationFrame(frame);
+  audio.ensure(); $('#screen-title').classList.remove('on'); running = true; paused = false; last = performance.now();
+  // first-play touch hint: shown until the player's first ollie, then never again
+  if (touch && !localStorage.getItem('css-ollied')) document.body.classList.add('show-hint');
+  requestAnimationFrame(frame);
 }
 function setPaused(p) {
   paused = p; $('#screen-pause').classList.toggle('on', p); if (p) input.resetAll();
@@ -62,54 +73,62 @@ function setPaused(p) {
     const s = skater.session;
     $('#stats').innerHTML = `Score <b>${skater.score.toLocaleString()}</b> · best combo <b>${s.bestCombo.toLocaleString()}</b><br>${s.tricks} tricks · ${s.bails} bails · ${(s.dist / 1609).toFixed(2)} mi skated · top speed ${Math.round(s.topSpeed * 2.237)} mph<br>Spots found: ${skater.spotsHit.size}/${skater.spots.length}`;
     $('#spots-list').innerHTML = skater.spots.map(sp => `<div class="${skater.spotsHit.has(sp.name) ? 'hit' : ''}">${sp.name}</div>`).join('');
+    $('#chal-list').innerHTML = chal.list.map(c => { const done = chal.done.has(c.id); return `<div class="${done ? 'hit' : ''}"><b>${done ? '✔' : '○'} ${c.name}</b><i>${c.hint}</i></div>`; }).join('');
     $('#btn-mute').textContent = 'Sound: ' + (audio.muted ? 'off' : 'on');
   } else { last = performance.now(); }
 }
 $('#btn-play').addEventListener('click', start);
 $('#btn-resume').addEventListener('click', () => setPaused(false));
-$('#btn-respawn').addEventListener('click', () => { const sp = world.spawn; skater.respawn(sp.x, sp.y, sp.z, sp.yaw); follow.reset(skater); setPaused(false); });
+$('#btn-respawn').addEventListener('click', () => { const sp = world.spawn; skater.respawn(sp.x, sp.y, sp.z, sp.yaw); follow.reset(skater); locTimer = 0; setPaused(false); });
 $('#btn-mute').addEventListener('click', () => { $('#btn-mute').textContent = 'Sound: ' + (audio.toggleMute() ? 'off' : 'on'); });
 window.addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 renderer.setSize(innerWidth, innerHeight);
 document.addEventListener('visibilitychange', () => { if (document.hidden && running && !paused) setPaused(true); });
+
+function stepGame(dt, now) {
+  input.poll();
+  if (autopilot) autopilot(input, skater, dt);
+  if (input.pause) { setPaused(true); input.endFrame(); return false; }
+  if (input.reset) { const g = skater.lastGround; skater.respawn(g.x, g.y + 0.05, g.z); follow.reset(skater); input.resetAll(); locTimer = 0; }
+  if (input.cam) follow.mode = (follow.mode + 1) % 3;
+  if (input.map) hud.toggleMap();
+  skater.update(dt, input);
+  world.confine(skater);
+  world.update(dt, skater);
+  for (const ev of skater.events) {
+    hud.handle(ev, skater); audio.handle(ev); chal.handle(ev, skater); if (evTap) evTap(ev, skater);
+    if (ev.type === 'bail') follow.kick(ev.why === 'wall' || ev.why === 'car' ? 1.2 : 0.7);
+    if (ev.type === 'land' && ev.speed > 8) follow.kick(0.25);
+    if (ev.type === 'pop' && document.body.classList.contains('show-hint')) {
+      document.body.classList.add('hint-out');
+      try { localStorage.setItem('css-ollied', '1'); } catch { /* private mode */ }
+      setTimeout(() => document.body.classList.remove('show-hint', 'hint-out'), 700);
+    }
+  }
+  skater.events.length = 0;
+  chal.update(dt, skater);
+  for (const c of chal.justDone) { hud.callout('CHALLENGE: ' + c.name, chal.remaining ? `${chal.remaining} to go` : 'that is all of them'); audio.handle({ type: 'spotFirst' }); }
+  chal.justDone.length = 0;
+  mesh.update(dt, skater, now / 1000);
+  follow.update(dt, skater);
+  locTimer -= dt; if (locTimer <= 0) { locTimer = 0.4; curLoc = world.locationName(skater.pos.x, skater.pos.z); }
+  hud.update(dt, skater, curLoc);
+  audio.update(dt, skater);
+  input.endFrame();
+  return true;
+}
 
 function frame(now) {
   if (!running) return;
   requestAnimationFrame(frame);
   let dt = Math.min(0.05, (now - last) / 1000); last = now;
   if (paused) return;
-  input.poll();
-  if (input.pause) { setPaused(true); input.endFrame(); return; }
-  if (input.reset) { const g = skater.lastGround; skater.respawn(g.x, g.y + 0.05, g.z); input.resetAll(); }
-  if (input.cam) follow.mode = (follow.mode + 1) % 3;
-  if (input.map) hud.toggleMap();
-  // physics
-  skater.update(dt, input);
-  // keep inside the playable area
-  world.confine(skater);
-  // world sim (npcs, traffic, env)
-  world.update(dt, skater);
-  // events
-  for (const ev of skater.events) {
-    hud.handle(ev, skater); audio.handle(ev);
-    if (ev.type === 'bail') follow.kick(ev.why === 'wall' || ev.why === 'car' ? 1.2 : 0.7);
-    if (ev.type === 'land' && ev.speed > 8) follow.kick(0.25);
-  }
-  skater.events.length = 0;
-  mesh.update(dt, skater, now / 1000);
-  follow.update(dt, skater);
-  locTimer -= dt; if (locTimer <= 0) { locTimer = 0.4; curLoc = world.locationName(skater.pos.x, skater.pos.z); }
-  hud.update(dt, skater, curLoc);
-  audio.update(dt, skater);
+  if (!stepGame(dt, now)) return;
   renderer.render(scene, camera);
-  input.endFrame();
   // adaptive quality
   fpsAcc += dt; fpsN++;
   if (fpsAcc > 2) { const fps = fpsN / fpsAcc; fpsAcc = 0; fpsN = 0;
     if (fps < 40) { lowFpsT++; if (lowFpsT >= 2) { lowFpsT = 0; world.degrade(renderer); } } else lowFpsT = 0; }
 }
 
-window.__tp = (x, z, yaw, speed = 0) => { const y = world.collide.groundAt(x, z, 100, 200).y + 0.05; skater.respawn(x, y, z, yaw); if (speed) { const f = Math.sin(yaw), g = Math.cos(yaw); skater.vel.set(-f * speed, 0, -g * speed); } follow.reset(skater); };
-window.__topdown = (x, z, h = 80) => { running = false; camera.position.set(x, skater.pos.y + h, z + 0.01); camera.up.set(0, 0, -1); camera.lookAt(x, skater.pos.y, z); camera.up.set(0, 1, 0); renderer.render(scene, camera); };
-window.__dbg = () => skater ? { state: skater.state, pos: [+skater.pos.x.toFixed(2), +skater.pos.y.toFixed(2), +skater.pos.z.toFixed(2)], vel: [+skater.vel.x.toFixed(2), +skater.vel.y.toFixed(2), +skater.vel.z.toFixed(2)], yaw: +skater.yaw.toFixed(2), score: skater.score, combo: skater.combo.map(t => t.name), loc: curLoc, ground: skater.groundKind, drawCalls: renderer.info.render.calls, tris: renderer.info.render.triangles } : null;
 boot().catch(() => {});

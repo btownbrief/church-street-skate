@@ -49,7 +49,7 @@ export async function buildWorld({ scene, renderer, camera, quality }) {
   const stats = `${(WORLD.buildings || []).length} buildings · ${(WORLD.roads || []).length} streets · ${spots.length} spots`;
 
   return {
-    collide, terrain, spawn, spots, info, stats, WORLD, play,
+    collide, terrain, spawn, spots, info, stats, WORLD, play, _locations: locations,
     update(dt, skater) { for (const u of updaters) u(dt, skater); },
     locationName(x, z) { return locator(x, z); },
     confine(sk) {
@@ -96,6 +96,7 @@ function makeLocator(W, locations) {
     const a = roads[i], b = roads[j]; if (a.name === b.name) continue;
     for (const p of a.pts) for (const q of b.pts) if (Math.abs(p[0] - q[0]) < 1 && Math.abs(p[1] - q[1]) < 1) { if (!inter.some(k => Math.hypot(k.x - p[0], k.z - p[1]) < 8 && k.n.has(a.name) && k.n.has(b.name))) inter.push({ x: p[0], z: p[1], n: new Set([a.name, b.name]) }); }
   }
+  if (W.churchStreet && W.churchStreet.crossings) for (const [n, p] of Object.entries(W.churchStreet.crossings)) inter.push({ x: p[0], z: p[1], n: new Set(['Church Street', n + ' Street']) });
   const short = (n) => n.replace(/\bStreet\b/, 'St').replace(/\bAvenue\b/, 'Ave').replace(/\bSouth\b/, 'S.').replace(/\bNorth\b/, 'N.').replace(/\bSaint\b/, 'St.');
   const pip = (px, pz, pts) => { let ins = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const xi = pts[i][0], zi = pts[i][1], xj = pts[j][0], zj = pts[j][1]; if (((zi > pz) !== (zj > pz)) && (px < (xj - xi) * (pz - zi) / (zj - zi) + xi)) ins = !ins; } return ins; };
   return (x, z) => {

@@ -27,7 +27,7 @@ export function buildEnv(ctx) {
   scene.background = new THREE.Color(HAZE);
   scene.fog = new THREE.Fog(HAZE, mobile ? 90 : 130, mobile ? 480 : 700);
 
-  const hemi = new THREE.HemisphereLight(0xcfe0ff, 0x6a4f36, 0.72);
+  const hemi = new THREE.HemisphereLight(0xd6e4ff, 0x8a6f55, 1.15);
   scene.add(hemi);
 
   const sun = new THREE.DirectionalLight(0xffe2b8, 2.2);

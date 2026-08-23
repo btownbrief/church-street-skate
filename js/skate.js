@@ -351,5 +351,14 @@ export class Skater {
     this.emit('bank', { total, n: real.length, spot: spot ? spot.name : null, tricks: real.map(t => t.name) });
     this.combo = []; this.comboPending = 0;
   }
-  spotAt(x, z) { let best = null, bd = Infinity; for (const s of this.spots) { const d = Math.hypot(s.x - x, s.z - z); if (d < s.r && d < bd) { bd = d; best = s; } } return best; }
+  // The most *specific* spot containing (x,z) wins: a small spot nested inside a big one
+  // (the fountain inside City Hall Park) must be reachable, so radius beats distance.
+  spotAt(x, z) {
+    let best = null;
+    for (const s of this.spots) {
+      const d = Math.hypot(s.x - x, s.z - z); if (d >= s.r) continue;
+      if (!best || s.r < best.r || (s.r === best.r && d < Math.hypot(best.x - x, best.z - z))) best = s;
+    }
+    return best;
+  }
 }

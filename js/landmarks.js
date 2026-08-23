@@ -484,7 +484,9 @@ L.cityHall = function (c) {
   // central landing
   const lx = fx(E, 0, oMid), lz = fz(E, 0, oMid);
   mg.add(B(6.6, LAND - PY + 1.5, oOut - oIn), mats.granite, lx, (LAND + PY - 1.5) / 2, lz, E.yaw);
-  ctx.collide.addSurface({ x: lx, z: lz, w: 6.6, d: oOut - oIn, yaw: surfYaw(E), top: LAND, bottom: PY - 0.5, kind: 'platform', name: 'City Hall landing' });
+  // physics box is 0.9 m longer than the drawn landing so it overlaps the top of each stair
+  // ramp — flush at 6.6 there was a ~0.3 m crack that dropped the skater 2.4 m to the plaza.
+  ctx.collide.addSurface({ x: lx, z: lz, w: 7.5, d: oOut - oIn, yaw: surfYaw(E), top: LAND, bottom: PY - 0.5, kind: 'platform', name: 'City Hall landing' });
   // recessed ground-level door + brick apron between the flights
   win(c, E, 0, PY + 0.05, 2.2, 2.4, 0.30, mats.granite, mats.brown, true);
   mg.add(B(5.5, 0.1, 4.2), mats.brickRed, fx(E, 0, oOut + 2.6), PY + 0.02, fz(E, 0, oOut + 2.6), E.yaw);
@@ -1037,13 +1039,13 @@ L.burlingtonSquare = function (c) {
     mg.add(g2, s.mat, HX + 0.15, SG + 1.6, zz);
   }
   // covered pedestrian walkway hugging the hoarding
-  mg.add(B(5.4, 0.22, HZ0 - HZ1), mats.stone, HX + 2.9, SG + 3.5, (HZ0 + HZ1) / 2);
+  mg.add(B(3.2, 0.22, HZ0 - HZ1), mats.stone, HX + 1.75, SG + 3.5, (HZ0 + HZ1) / 2);
   for (let zz = HZ1 + 2; zz < HZ0; zz += 5) {
-    mg.add(B(0.22, 3.5, 0.22), mats.iron, HX + 5.3, SG + 1.75, zz);
-    ctx.collide.addBlocker({ x: HX + 5.3, z: zz, r: 0.16, name: 'Walkway post' });
+    mg.add(B(0.22, 3.5, 0.22), mats.iron, HX + 3.2, SG + 1.75, zz);
+    ctx.collide.addBlocker({ x: HX + 3.2, z: zz, r: 0.16, top: SG + 3.5, name: 'Walkway post' });
   }
-  // jersey barriers — grindable
-  const BX = HX + 6.6;
+  // jersey barriers — grindable, at the edge of the active zone (the centre lane stays clear)
+  const BX = HX + 4.3;
   for (let k = 0; k < 11; k++) {
     const zz = HZ1 + 4 + k * 3.3, g = ctx.terrain.heightAt(BX, zz);
     mg.add(frustumGeo(0.62, 3.1, 0.86, 0.24, 3.1), mats.concrete, BX, g, zz);

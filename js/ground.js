@@ -12,7 +12,8 @@ import { clamp, pointInPoly, hashStr } from './util.js';
 const CAR_KINDS = ['primary', 'secondary', 'tertiary', 'residential', 'unclassified', 'service'];
 const WALK_KINDS = ['primary', 'secondary', 'tertiary', 'residential', 'unclassified'];
 const GREEN_KINDS = ['leisure:park', 'landuse:grass', 'landuse:cemetery', 'natural:wood', 'leisure:garden',
-  'landuse:recreation_ground', 'leisure:common', 'leisure:playground', 'landuse:village_green'];
+  'landuse:recreation_ground', 'leisure:common', 'leisure:playground', 'landuse:village_green',
+  'landuse:religious', 'amenity:school', 'amenity:college', 'landuse:education', 'landuse:residential'];
 
 // land-cover codes baked into the terrain vertex colours
 const CV = { URBAN: 0, GREEN: 1, WATER: 2, DIRT: 3, PAVED: 4 };
@@ -343,6 +344,17 @@ function buildStreets(ctx, B, gridH, near, rnd) {
     return false;
   };
 
+  // inside the brick field itself (≈ 11.5 m either side of the centreline)
+  const nearMallCore = (x, z) => {
+    for (let i = 0; i < mall.length - 1; i++) {
+      const a = mall[i], b = mall[i + 1];
+      const dx = b[0] - a[0], dz = b[1] - a[1]; const l2 = dx * dx + dz * dz || 1;
+      let t = ((x - a[0]) * dx + (z - a[1]) * dz) / l2; t = clamp(t, 0, 1);
+      const px = a[0] + dx * t - x, pz = a[1] + dz * t - z;
+      if (px * px + pz * pz < 11.5 * 11.5) return true;
+    }
+    return false;
+  };
   const ASPH = 0x46484c, ALLEY = 0x55575b;
   const CURB = C(0x8d8b84), WALK = C(0xc9c4b8), WHITE = C(0xd9d7cc), YELL = C(0xc9a63a);
 
@@ -359,8 +371,12 @@ function buildStreets(ctx, B, gridH, near, rnd) {
     const band = (r.kind === 'residential') ? 2.4 : 3.2;
 
     let prevWalk = [false, false];
+    // Cherry, Bank and College cross the Marketplace ON the brick (granite bands, no asphalt);
+    // only Pearl and Main are asphalt through the intersection.
+    const brickCrossing = /^(Cherry|Bank|College) Street$/.test(r.name || '');
     for (let i = 0; i < path.length - 1; i++) {
       const a = path[i], b = path[i + 1], na = nrm[i], nb = nrm[i + 1];
+      if (brickCrossing && nearMallCore((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)) continue;
       const ya = gridH(a[0], a[1]) + layer, yb = gridH(b[0], b[1]) + layer;
       const tone = 0.9 + 0.2 * (((hashStr(r.id + ':' + i) >>> 6) & 255) / 255);
       const col = [base[0] * tone, base[1] * tone, base[2] * tone];
@@ -403,12 +419,14 @@ function buildStreets(ctx, B, gridH, near, rnd) {
         const wc = [WALK[0] * tone2, WALK[1] * tone2, WALK[2] * tone2];
         B.concrete.quad(P(a, na, o1, wa + 0.004), P(a, na, o2, wa + 0.004), P(b, nb, o2, wb + 0.004), P(b, nb, o1, wb + 0.004), wc);
         if (inPlay) {
-          const cxm = (a[0] + b[0]) / 2 + mn[0] * ((o0 + o2) / 2) * sg;
-          const czm = (a[1] + b[1]) / 2 + mn[1] * ((o0 + o2) / 2) * sg;
-          const yaw = Math.atan2(-(b[0] - a[0]), -(b[1] - a[1]));
-          collide.addSurface({
-            x: cxm, z: czm, w: o2 - o0, d: Math.hypot(b[0] - a[0], b[1] - a[1]) + 0.2, yaw,
-            top: ctx.terrain.heightAt(cxm, czm) + 0.13, bottom: -3, kind: 'sidewalk',
+          // A sloped ramp, not a flat box: on the hill streets a flat slab per 5 m segment
+          // left a 25 cm step at every joint — taller than the skater's stepUp, so riding
+          // uphill on a sidewalk stopped dead. The ramp matches the drawn quad exactly.
+          const om = (o0 + o2) / 2;
+          collide.addRamp({
+            ax: a[0] + na[0] * om * sg, az: a[1] + na[1] * om * sg,
+            bx: b[0] + nb[0] * om * sg, bz: b[1] + nb[1] * om * sg,
+            w: o2 - o0, yLow: wa, yHigh: wb, kind: 'sidewalk',
           });
         }
       }
@@ -655,14 +673,8 @@ function buildMall(ctx, B, gridH, near) {
     if (name === 'Cherry' || name === 'College') diamond(B, gridH, p, n, [tx, tz], Math.min(hp, hn, 8.4));
   }
 
-  // the two circular stone world maps inlaid in front of City Hall (D&K 2017)
-  const mainZ = (cs.crossings.Main || [6.2, 128.2])[1];
-  for (const dz of [-33, -19]) {
-    const gz = mainZ + dz;
-    const gi = nearestIdx(line, [0, gz]);
-    globe(B, gridH, line[gi][0] - 2.4, gz, 1.95, dz);
-  }
-  spots.push({ name: 'Globe pavers', x: line[nearestIdx(line, [0, mainZ - 26])][0] - 2.4, z: mainZ - 26, r: 12, bonus: 220 });
+  // the two circular world-map pavers in front of City Hall are drawn by props.js
+  // (textured hemispheres, one per globe) — don't duplicate them here.
 
   // physics: the mall reads as 'brick', sloped to match the ground, minus the car crossings
   let acc = 0, segStart = 0;
@@ -736,28 +748,6 @@ function diamond(B, gridH, p, n, t, R) {
 
 // one of the two circular world-map paver inlays outside City Hall: pale "sea" stone,
 // darker "land" masses, a granite rim
-function globe(B, gridH, cx, cz, r, seed) {
-  const SEA = C(0x877f72), LAND = C(0x574f46), RIM = C(0xa39c8e);
-  const N = 30, y = gridH(cx, cz) + 0.038;
-  const P = (a, rr) => {
-    const x = cx + Math.cos(a) * rr, z = cz + Math.sin(a) * rr;
-    return [x, gridH(x, z) + 0.038, z];
-  };
-  for (let i = 0; i < N; i++) {
-    const a0 = i / N * Math.PI * 2, a1 = (i + 1) / N * Math.PI * 2;
-    B.stone.tri([cx, y, cz], P(a1, r), P(a0, r), SEA);
-    // continents: contiguous arcs with a wobbling coastline
-    const t = i / N;
-    const land = Math.sin(t * 6.283 * 2 + seed) + 0.55 * Math.sin(t * 6.283 * 3.7 + seed * 2.1);
-    if (land > -0.35) {
-      const r0 = r * (0.1 + 0.18 * Math.sin(t * 11 + seed));
-      const r1 = r * (0.5 + 0.42 * clamp((land + 0.35) / 1.6, 0, 1));
-      B.stone.quad(P(a0, r0), P(a1, r0), P(a1, r1), P(a0, r1), LAND);
-    }
-  }
-  ring(B.stone, cx, cz, r, r + 0.28, y + 0.002, RIM, N);
-}
-
 // ---------------------------------------------------------------------------
 // City Hall Park — the 2020 Wagner Hodgson rebuild
 // ---------------------------------------------------------------------------

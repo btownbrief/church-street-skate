@@ -206,7 +206,12 @@ export function createTraffic(ctx) {
       const hB = terrain.heightAt(sl.x + Math.sin(sl.yaw) * 2, sl.z + Math.cos(sl.yaw) * 2);
       drawVehicle(i, { x: sl.x, y, z: sl.z, yaw: sl.yaw + R(-0.03, 0.03), pitch: Math.atan2(hA - hB, 4), T });
       paint(i, PAINT[(rnd() * PAINT.length) | 0], false);
-      collide.addSurface({ x: sl.x, z: sl.z, w: T.bw, d: T.bl, yaw: sl.yaw, top: y + (T.cy + T.ch / 2), bottom: y, kind: 'car', name: 'Parked car', grindable: false });
+      // Two decks, so a parked car is actually skateable: the hood/trunk sheet metal (a
+      // reachable ollie) and the cabin roof above it. Landing on either counts as the car.
+      const deck = y + T.by + T.bh / 2, roof = y + T.cy + T.ch / 2;
+      const cs = Math.sin(sl.yaw), cc = Math.cos(sl.yaw);   // local (0, cz) → world, same as part()
+      collide.addSurface({ x: sl.x, z: sl.z, w: T.bw, d: T.bl, yaw: sl.yaw, top: deck, bottom: y, kind: 'car', name: 'Parked car', grindable: false });
+      collide.addSurface({ x: sl.x + T.cz * cs, z: sl.z + T.cz * cc, w: T.cw, d: T.cl, yaw: sl.yaw, top: roof, bottom: deck, kind: 'car', name: 'Parked car', grindable: false });
     }
     for (let i = take; i < nPark; i++) { part(bodyM, i, 0, -400, 0, 0.001, 0.001, 0.001); part(cabinM, i, 0, -400, 0, 0.001, 0.001, 0.001); for (let k = 0; k < 4; k++) { part(wheelM, i * 4 + k, 0, -400, 0, 0.001, 0.001, 0.001); part(lightM, i * 4 + k, 0, -400, 0, 0.001, 0.001, 0.001); } }
   }

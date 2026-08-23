@@ -11,7 +11,10 @@ export const CFG = {
   turnRate: 2.6,           // rad/s at low speed
   turnRateHighSpeed: 1.5,
   grip: 7,                 // how fast velocity aligns to heading (carve)
-  ollieMin: 3.3, ollieMax: 5.6, ollieCharge: 0.45,
+  // ollie pop speeds → peak height = v²/(2·gravity). 3.4 ≈ 0.34 m tap, 6.5 ≈ 1.24 m full.
+  // Full charge must clear the City Hall handrail (1.21 m above the plaza) and the bronze
+  // blocks (1.39 m, caught via the 0.25 m grind snap-below), or the marquee spots are dead.
+  ollieMin: 3.4, ollieMax: 6.5, ollieCharge: 0.45,
   spinRate: 5.2,           // rad/s in air at full stick
   flipTime: 0.42,
   landTolerance: 0.68,     // rad (≈39°) between board yaw and velocity on landing

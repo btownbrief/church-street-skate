@@ -36,6 +36,7 @@ for (const step of script.split(',')) {
   else if (cmd === 'shot') { await page.screenshot({ path: `${out}-${i++}.png` }); }
   else if (cmd === 'tp') { const [x, z, yaw, sp] = arg.split('/').map(Number); await page.evaluate(([x, z, yaw, sp]) => window.__tp(x, z, yaw, sp), [x, z, yaw, sp]); }
   else if (cmd === 'top') { const [x, z, h] = arg.split('/').map(Number); await page.evaluate(([x, z, h]) => window.__topdown(x, z, h), [x, z, h]); await page.waitForTimeout(200); }
+  else if (cmd === 'sim') { const [sec, keys] = arg.split('/'); await page.evaluate(([s, k]) => window.__sim(+s, k ? k.split('+') : []), [sec, keys || '']); }
   else if (cmd === 'state') { const s = await page.evaluate(() => window.__dbg ? window.__dbg() : 'no dbg'); console.log('STATE:', JSON.stringify(s)); }
 }
 const st = await page.evaluate(() => window.__dbg ? window.__dbg() : null); console.log('FINAL:', JSON.stringify(st));

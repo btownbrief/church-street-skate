@@ -77,3 +77,21 @@ h2 { margin:0 0 12px; }
 .spots div { padding:2px 0; opacity:.6; }
 .spots div.hit { opacity:1; color:#8ee9a0; }
 .spots div::before { content:"○ "; } .spots div.hit::before { content:"● "; }
+
+.fineprint { font-size:11px; line-height:1.5; opacity:.55; margin:-6px 0 18px; font-style:italic; }
+.secttl { font-size:11px; letter-spacing:.22em; text-transform:uppercase; color:var(--accent); opacity:.85; margin:18px 0 6px; text-align:left; }
+.chals { text-align:left; font-size:12px; }
+.chals div { padding:3px 0; opacity:.65; }
+.chals div.hit { opacity:1; color:#8ee9a0; }
+.chals b { font-weight:700; display:block; }
+.chals i { font-style:normal; opacity:.6; font-size:11px; }
+#screen-pause .card { max-height:88vh; overflow-y:auto; }
+
+/* First-play touch hint: fades out after the first ollie */
+#hint { position:fixed; z-index:7; left:50%; bottom:calc(28px + var(--safe-b)); transform:translateX(-50%);
+  background:rgba(10,14,20,.7); border:1px solid rgba(255,255,255,.15); border-radius:999px; padding:9px 16px;
+  font-size:12px; letter-spacing:.01em; backdrop-filter:blur(6px); display:none; pointer-events:none;
+  transition:opacity .5s; text-align:center; max-width:82vw; }
+#hint b { color:var(--accent); }
+body.touch.show-hint #hint { display:block; }
+body.hint-out #hint { opacity:0; }
