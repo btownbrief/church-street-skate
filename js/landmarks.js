@@ -643,6 +643,8 @@ L.firehouse = function (c) {
     fb(c, mats.iron, F, u, y0 + 11.2, 0.55, 1.0, 0.08, 0.08);
   }
 
+  c.sign(3.6, 0.6, 'BCA Center', { bg: '#1d2a2e', fg: '#f0e3a8', size: 20 }, fx(F, F.L * 0.28, 0.52), y0 + 3.6, fz(F, F.L * 0.28, 0.52), F.yaw);
+
   // --- the hose-drying tower, set back behind the front wall
   const tx = fx(F, 0.4, -8.6), tz = fz(F, 0.4, -8.6), TW = 5.4;
   mg.add(B(TW, 25, TW), mats.brickOrange, tx, y0 + 11.5, tz, F.yaw);
@@ -696,6 +698,7 @@ L.masonic = function (c) {
   // the rest of the roof
   mg.add(frustumGeo(30, 25, 3.0, 22, 17), mats.slate, ce[0], TOP + 0.4, ce[1], E.yaw);
 
+  c.sign(4.0, 0.62, 'Chase', { bg: '#0f3c78', fg: '#f2f4f8', size: 22 }, fx(E, 0, 0.5), y0 + 4.2, fz(E, 0, 0.5), E.yaw);
   c.loc('Masonic Temple', fx(E, 4, 2.5), fz(E, 4, 2.5), 7.5);
 };
 
@@ -745,6 +748,8 @@ L.richardson = function (c) {
   const cnr = pts[1], inx = (ce[0] - cnr[0]), inz = (ce[1] - cnr[1]), iL = Math.hypot(inx, inz);
   turret(cnr[0] + inx / iL * 1.5, cnr[1] + inz / iL * 1.5, 2.35, y0 + 3.4, TOP + 1.8, 6.4);
   c.sign(3.0, 0.55, 'Kru Coffee', { bg: '#2b2320', fg: '#e6d9c4', size: 20 }, fx(W, -11.1, 0.30), y0 + 4.3, fz(W, -11.1, 0.30), W.yaw);
+  // the upstairs bar keeps its own sign a storey above the shopfront band
+  c.sign(3.4, 0.6, 'Top of the Block', { bg: '#1c2b33', fg: '#e4d6b4', size: 18 }, fx(W, 3.6, 0.30), y0 + 8.5, fz(W, 3.6, 0.30), W.yaw);
 
   c.loc("Richardson Building · Abernethy's", fx(W, 0, 2.5), fz(W, 0, 2.5), 7.5);
 };
@@ -834,6 +839,8 @@ L.leunigs = function (c) {
     fb(c, mats.cream, f, 0, y0 + 3.85, 0.42, f.L, 0.75, 0.85);  // awning band
   }
   c.sign(4.6, 0.8, "Leunig's", { bg: '#e7dfc9', fg: '#5a3a20', size: 26, font: 'Georgia, serif' }, fx(E, 0, 0.5), y0 + 16.9, fz(E, 0, 0.5), E.yaw);
+  c.sign(4.6, 0.62, "Leunig's Bistro & Café", { bg: '#2c2016', fg: '#e9d9b8', size: 18 }, fx(E, -5.4, 0.5), y0 + 3.9, fz(E, -5.4, 0.5), E.yaw);
+  c.sign(3.8, 0.62, 'Danforth Pewter', { bg: '#3b4148', fg: '#e8ebee', size: 18 }, fx(E, 5.4, 0.5), y0 + 3.9, fz(E, 5.4, 0.5), E.yaw);
   c.loc("Leunig's corner", fx(E, -5, 2.5), fz(E, -5, 2.5), 7.5);
 };
 

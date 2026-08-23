@@ -50,6 +50,7 @@ export function installDev(api) {
     const wp = waypoints.map(p => ({ x: p[0], z: p[1] })); let wi = 0;
     const log = []; const samples = [];
     let stuckT = 0, lastP = { x: skater.pos.x, z: skater.pos.z }, worstStuck = null;
+    let camPrev = camera.position.clone(), camMax = 0, camSnaps = 0, camSnapAt = null;
     api.setTap((ev) => { if (ev.type === 'bail' || ev.type === 'bump' || ev.type === 'spotFirst' || ev.type === 'grindStart') log.push({ [ev.type]: ev.why || ev.name || ev.type, x: +skater.pos.x.toFixed(1), z: +skater.pos.z.toFixed(1), y: +skater.pos.y.toFixed(2), sp: +skater.speed.toFixed(1) }); });
     api.setAutopilot((inp) => {
       while (wi < wp.length - 1 && Math.hypot(wp[wi].x - skater.pos.x, wp[wi].z - skater.pos.z) < (opts.reach || 6)) wi++;
@@ -64,11 +65,14 @@ export function installDev(api) {
       const moved = Math.hypot(skater.pos.x - lastP.x, skater.pos.z - lastP.z);
       lastP = { x: skater.pos.x, z: skater.pos.z };
       if (moved < 0.004 && skater.state !== 'bail') { stuckT += 1 / 60; if (stuckT > 1.2 && !worstStuck) worstStuck = { x: +skater.pos.x.toFixed(2), z: +skater.pos.z.toFixed(2), y: +skater.pos.y.toFixed(2), ground: skater.groundKind }; } else stuckT = 0;
+      const cd = camera.position.distanceTo(camPrev); camPrev.copy(camera.position);
+      if (i > 3) { if (cd > camMax) camMax = cd; if (cd > 0.9) { camSnaps++; if (!camSnapAt) camSnapAt = [+skater.pos.x.toFixed(1), +skater.pos.z.toFixed(1), +cd.toFixed(2)]; } }
       if (i % 30 === 0) samples.push([+skater.pos.x.toFixed(1), +skater.pos.z.toFixed(1), +skater.pos.y.toFixed(2), +skater.speed.toFixed(1), skater.state]);
     }
     api.setAutopilot(null); api.setTap(null);
     const sp = samples.map(s => s[3]);
-    return { end: [+skater.pos.x.toFixed(1), +skater.pos.z.toFixed(1)], reachedWp: wi, log, stuck: worstStuck, speed: { min: Math.min(...sp), max: Math.max(...sp), avg: +(sp.reduce((a, b) => a + b, 0) / sp.length).toFixed(1) }, samples };
+    return { end: [+skater.pos.x.toFixed(1), +skater.pos.z.toFixed(1)], reachedWp: wi, log, stuck: worstStuck,
+      cam: { maxStep: +camMax.toFixed(2), snaps: camSnaps, firstSnap: camSnapAt }, speed: { min: Math.min(...sp), max: Math.max(...sp), avg: +(sp.reduce((a, b) => a + b, 0) / sp.length).toFixed(1) }, samples };
   };
 
   // everything the physics world holds near (x,z)

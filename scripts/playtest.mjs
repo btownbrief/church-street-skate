@@ -41,7 +41,7 @@ tests.mall = async () => {
   const wps = between(-380, 140);
   await tp(CL[0][0], CL[0][1] + 4, Math.PI, 4);
   const r = await drive(wps, 75, { gain: 1.4 });
-  say('MALL Pearl→Main:', JSON.stringify({ end: r.end, wp: r.reachedWp + '/' + wps.length, speed: r.speed, stuck: r.stuck }));
+  say('MALL Pearl→Main:', JSON.stringify({ end: r.end, wp: r.reachedWp + '/' + wps.length, speed: r.speed, stuck: r.stuck, cam: r.cam }));
   for (const l of r.log) say('   ', JSON.stringify(l));
   await shot('mall');
   // ground continuity along the whole mall: sample every 2 m, look for steps
@@ -63,7 +63,7 @@ tests.college = async () => {
   // Bomb College St west from Church to Battery.
   await tp(-14, 1.2, Math.PI / 2, 6);
   const r = await drive([[-60, 2], [-140, 4], [-240, 7], [-360, 9], [-460, 11]], 45, { gain: 1.4 });
-  say('COLLEGE bomb west:', JSON.stringify({ end: r.end, speed: r.speed, stuck: r.stuck }));
+  say('COLLEGE bomb west:', JSON.stringify({ end: r.end, speed: r.speed, stuck: r.stuck, cam: r.cam }));
   for (const l of r.log) say('   ', JSON.stringify(l));
   await shot('college');
 };
@@ -71,7 +71,7 @@ tests.college = async () => {
 tests.main = async () => {
   await tp(14, 130, Math.PI / 2, 6);
   const r = await drive([[-60, 131], [-160, 133], [-280, 136], [-400, 140]], 40, { gain: 1.4 });
-  say('MAIN bomb west:', JSON.stringify({ end: r.end, speed: r.speed, stuck: r.stuck }));
+  say('MAIN bomb west:', JSON.stringify({ end: r.end, speed: r.speed, stuck: r.stuck, cam: r.cam }));
   for (const l of r.log) say('   ', JSON.stringify(l));
   await shot('main');
 };
@@ -195,6 +195,61 @@ tests.tricks = async () => {
   await tp(-11, -60, Math.PI, 0); await sim(3, ['ArrowUp']);
   const man = await ev(() => { window.__sim(0.3, ['Space']); for (let i = 0; i < 30; i++) window.__sim(1 / 60); let sawManual = false; for (let i = 0; i < 240; i++) { window.__sim(1 / 60, ['ShiftLeft']); if (window.__dbg().state === 'manual') sawManual = true; } return { sawManual, end: window.__dbg() }; });
   say('MANUAL through a landing:', JSON.stringify(man));
+};
+
+tests.car = async () => {
+  // ollie onto the nearest parked car deck from the road beside it
+  const r = await ev(() => {
+    const cars = window.__world.collide.all.surfaces.filter(s => s.name === 'Parked car');
+    const out = { total: cars.length / 2, landed: 0, tried: 0, decks: [] };
+    for (let i = 0; i < cars.length && out.tried < 8; i += 2) {
+      const c = cars[i];                       // the low deck
+      const g = window.__world.collide.groundAt(c.x + Math.cos(c.yaw) * 4, c.z - Math.sin(c.yaw) * 4, 200, 300);
+      out.decks.push(+(c.top - g.y).toFixed(2));
+      out.tried++;
+      // drop straight down onto the deck from 3 m up, no horizontal speed
+      window.__air(c.x, c.top + 2.5, c.z, c.yaw, 0.2, -1, 0);
+      let ok = false;
+      for (let k = 0; k < 90 && !ok; k++) { window.__sim(1 / 60); const d = window.__dbg(); if (d.state === 'ride' && d.ground === 'car') ok = true; if (d.state === 'bail') break; }
+      if (ok) out.landed++;
+    }
+    return out;
+  });
+  say(`PARKED CARS: ${r.total} cars · landed on ${r.landed}/${r.tried} decks · deck heights above the road ${r.decks.join(', ')}`);
+  const oll = await ev(() => {
+    const cars = window.__world.collide.all.surfaces.filter(s => s.name === 'Parked car');
+    for (let i = 0; i < cars.length; i += 2) {
+      const c = cars[i];
+      const rx = Math.cos(c.yaw), rz = -Math.sin(c.yaw);        // across the car
+      for (const sgn of [-1, 1]) {                             // whichever side is the travel lane
+        window.__tp(c.x + rx * sgn * 7, c.z + rz * sgn * 7, Math.atan2(rx * sgn, rz * sgn), 7);
+        window.__sim(0.5, ['Space']);
+        for (let k = 0; k < 90; k++) { window.__sim(1 / 60); const d = window.__dbg(); if (d.state === 'ride' && d.ground === 'car') return { ok: 1, at: d.pos }; if (d.state !== 'air') break; }
+      }
+    }
+    return { ok: 0 };
+  });
+  say('OLLIE onto a parked car from the road:', oll.ok ? 'landed at ' + oll.at : 'never landed on one');
+};
+
+tests.hazards = async () => {
+  // A bail must always recover to a rideable state, wherever it happens.
+  const r = await ev(() => {
+    const spots = [[-40, 130], [-11, -250], [0, 0], [-14, 90], [-70, 66]];
+    const out = [];
+    for (const [x, z] of spots) {
+      window.__tp(x, z, Math.PI, 9);
+      window.__sim(1 / 60);
+      window.__world.collide;                     // no-op, keeps the closure honest
+      // force a bail and let it play out
+      let sawBail = false;
+      for (let i = 0; i < 900; i++) { window.__sim(1 / 60, i === 0 ? ['ArrowUp'] : []); const d = window.__dbg(); if (d.state === 'bail') sawBail = true; if (sawBail && d.state === 'ride') break; }
+      const d = window.__dbg();
+      out.push({ at: [x, z], sawBail, end: d.state, y: d.pos[1] });
+    }
+    return out;
+  });
+  for (const o of r) say('HAZARD run', JSON.stringify(o));
 };
 
 tests.perf = async () => {

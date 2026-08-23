@@ -49,7 +49,7 @@ export async function buildWorld({ scene, renderer, camera, quality }) {
   const stats = `${(WORLD.buildings || []).length} buildings · ${(WORLD.roads || []).length} streets · ${spots.length} spots`;
 
   return {
-    collide, terrain, spawn, spots, info, stats, WORLD, play, _locations: locations,
+    collide, terrain, spawn, spots, info, stats, WORLD, play, _locations: locations, cityInfo: ctx.cityInfo, landmarkSigns: ctx.landmarkSigns,
     update(dt, skater) { for (const u of updaters) u(dt, skater); },
     locationName(x, z) { return locator(x, z); },
     confine(sk) {
