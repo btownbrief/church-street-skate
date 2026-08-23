@@ -39,8 +39,28 @@ playable frame rate on a mid-range phone.
 | `js/traffic.js` | builder D | cars/buses on car streets (not on the pedestrian mall), follow `WORLD.roads` polylines, one-way aware, yield, hit = bail |
 | `js/world.js` | lead | thin orchestrator: builds terrain → ground → city → props → npcs → traffic; exposes `world.update(dt, skaterPos)` |
 | `js/env.js` | builder A | time-of-day lighting preset (golden hour), drifting leaves / snow particle option, distance fog, lamp glow at dusk |
+| `js/challenges.js` | lead | eight Burlington challenges, ticked off from `skater.events` + a per-frame tracker, persisted in `localStorage` |
+| `js/devhooks.js` | lead | the `window.__*` headless-playtest hooks (`__sim` / `__tp` / `__drive` / `__air` / `__near` / `__pick` / `__ground` / `__meshes` / `__look` / `__topdown` / `__dbg`). Kept out of `main.js`; nothing runs unless a test calls it |
 
 Builders must not touch files they don't own. Shared constants in `js/config.js`.
+
+### Decisions worth knowing before you edit the world builders
+
+- **Sidewalks are ramps, not boxes.** `ground.js` registers each 5 m sidewalk segment with
+  `addRamp`, matching the drawn quad exactly. A flat-topped box per segment left a ~25 cm
+  step at every joint on the hill streets — taller than the skater's 0.24 m `stepUp`, so
+  riding uphill on a sidewalk stopped dead.
+- **Physics boxes may be bigger than the art.** The City Hall landing's collision box is
+  0.9 m longer and 0.9 m deeper than the granite block that is drawn, so it overlaps the
+  top of both stair ramps (a flush fit left a crack that dropped the skater 2.4 m) and
+  reaches out past the cheek walls so the hubba can be lined up on.
+- **Every `InstancedMesh` slot must be written.** An unwritten slot keeps the identity
+  matrix, i.e. a 1 m cube at the world origin — which here is Church & College. `npcs.js`
+  and `traffic.js` park every slot off-world at build time; `props.js` sizes its meshes to
+  the instances it actually placed.
+- **Parked cars carry two decks** (`traffic.js`): the hood/trunk sheet metal at ~0.9 m and
+  the cabin roof above it, both `kind: 'car'`. A full-charge ollie peaks at 1.24 m, so the
+  deck is the reachable one.
 
 ## Collision contract (`js/collide.js`)
 
@@ -51,7 +71,8 @@ collide.addSurface({ x, z, w, d, yaw, top, bottom, kind, name, grindable })
   // a flat-topped rotated box. w = size along local X, d = size along local Z, yaw as above.
   // top/bottom = absolute y of top face and bottom face. kind: 'ledge'|'bench'|'planter'|
   // 'curb'|'sidewalk'|'table'|'stairs'|'wall'|'fountain'|'platform'|'car'.
-  // grindable=true also registers its 4 top edges as grind edges (kind 'ledge').
+  // grindable=true registers the two LONG top edges as grind edges (kind 'ledge'); pass
+  // allEdges:true to add the short ends too (a bench's ends are not a grind target).
 collide.addEdge({ ax, ay, az, bx, by, bz, kind, name })   // 'rail'|'ledge'|'handrail'
 collide.addWall({ ax, az, bx, bz, top, name })               // vertical segment, infinite below top
 collide.addRamp({ ax, az, bx, bz, w, yLow, yHigh, kind, name })  // sloped surface from edge A→B
@@ -69,11 +90,11 @@ Queries used by physics: `groundAt(x, z, yHint)`, `nearestEdge(x,y,z,maxDist)`,
 Ground: terrain + surfaces. Pushing: impulses to ~9 m/s, downhill gravity along slope
 (Burlington's hills matter), rolling friction low, brake = foot drag. Turning rotates the
 board; velocity is pulled toward heading (carve grip). Ollie: hold to charge
-(0.15–0.5 s) → vertical 3.2–5.4 m/s. Air: steer = spin (yaw rate), flip buttons start
+(0–0.45 s) → vertical 3.4–6.5 m/s, i.e. a peak of 0.34–1.24 m. Air: steer = spin (yaw rate), flip buttons start
 board flips (~0.42 s). Land: bail if flip unfinished, if |yaw − velocity dir| mod 180 >
-38°, if speed into a wall is high, or if a car/pedestrian is hit. Grinds: while airborne
-and descending within 0.55 m of a grind edge and within 0.45 m above it → snap and slide
-along the edge; balance drifts, steer to correct; ollie out or fall off at the end.
+38°, if speed into a wall is high, or if a car/pedestrian is hit. Grinds: while airborne and no longer rising
+(`vel.y < 0.25`), within 0.6 m of a grind edge horizontally and between 0.25 m below and
+0.55 m above it → snap and slide along the edge; balance drifts, steer to correct; ollie out or fall off at the end.
 Manual: hold back/forward after landing on flat (balance mechanic). Scoring: THPS style
 (trick base × combo multiplier, combo banked on clean landing, lost on bail) with named
 **spot bonuses** keyed to real Burlington features (e.g. "City Hall steps", "Leunig's
@@ -85,5 +106,26 @@ corner", "Bank St planter", "Fountain gap").
   map that follows the skater on desktop; no shadows on the low tier.
 - Merge static geometry by material; props use `InstancedMesh`; textures are small
   canvases (≤512px) generated at boot.
-- Fog + lake backdrop hide the world edge. Draw-call budget ≈ 150.
+- Fog + lake backdrop hide the world edge. Draw-call budget ≈ 150 desktop, ≈ 110 phone.
 - `main.js` measures FPS and drops tiers (shadows → pixel ratio → NPC count).
+- Mobile cuts, all gated on `ctx.quality.mobile`: half-resolution terrain lattice, 8 m road
+  resample, roof-edge detail only within 140 m of Church St, `SEG()` coarsens every round
+  primitive in `props.js`, and every flat-coloured landmark material merges into one
+  vertex-coloured mesh. Measured on an iPhone 13 profile: ~99 meshes, ~295k triangles.
+
+## Headless playtesting
+
+`scripts/serve.sh` keeps a static server on :8765. Then:
+
+```
+node scripts/playtest.mjs [test ...]     # physics battery: mall, college, main, cityhall,
+                                         # grinds, holes, car, hazards, edges, tricks,
+                                         # spots, perf   (add `mobile` for the phone tier)
+node scripts/shot.mjs <prefix> [mobile]  # scripted keypresses + screenshots
+node scripts/shot-mobile.mjs <prefix> [portrait]   # touch-control + layout audit
+```
+
+`playtest.mjs` drives the real game through `js/devhooks.js` — `__drive` steers along
+waypoints and reports bails, stalls and camera jitter; `__air` unit-tests the grind snap on
+every registered edge; the `holes` test sweeps the skateable areas on a 0.3 m grid looking
+for cracks between two builders' surfaces.

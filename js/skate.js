@@ -2,7 +2,7 @@
 // queries the CollisionWorld, emits events for hud/audio/mesh.
 import * as THREE from '../vendor/three.module.min.js';
 import { CFG } from './config.js';
-import { clamp, lerp, fwd, yawOf, angleDiff, wrapAngle, damp, dampAngle } from './util.js';
+import { clamp, lerp, fwd, yawOf, angleDiff, wrapAngle, damp, dampAngle, storeGet, storeSet } from './util.js';
 
 const V = () => new THREE.Vector3();
 const _f = V(), _tmp = V(), _g = {};
@@ -25,7 +25,7 @@ export class Skater {
     this.bail = null;                    // { t, vel, spin }
     this.grindCooldown = 0; this.lastEdge = null;
     this.balance = 0;
-    this.combo = []; this.comboPending = 0; this.score = 0; this.best = +(localStorage.getItem('css-best') || 0);
+    this.combo = []; this.comboPending = 0; this.score = 0; this.best = +(storeGet('css-best', 0) || 0);
     this.bankedThisLanding = 0; this.session = { tricks: 0, bails: 0, bestCombo: 0, grindTime: 0, topSpeed: 0, dist: 0 };
     this.events = []; this.spots = []; this.spotsHit = new Set();
     this.stats = { clean: 0 };
@@ -222,7 +222,7 @@ export class Skater {
     // ceiling
     const ceil = cw.ceilingAt(p.x, p.z, p.y); if (p.y + 1.7 > ceil && v.y > 0) { p.y = ceil - 1.7; v.y = 0; }
     // grind snap
-    if (v.y < 0.6 && this.grindCooldown <= 0 && (v.x * v.x + v.z * v.z) > 1.0) {
+    if (v.y < 0.25 && this.grindCooldown <= 0 && (v.x * v.x + v.z * v.z) > 1.0) {
       const e = cw.nearestEdge(p.x, p.y, p.z, CFG.grindSnapDist, CFG.grindSnapAbove, CFG.grindSnapBelow, this._e || (this._e = {}));
       if (e && e.edge !== this.lastEdge) { this.startGrind(e, inp); return; }
     }
@@ -347,7 +347,7 @@ export class Skater {
     for (const t of this.combo) { const s2 = this.spotAt(t.x, t.z); if (s2 && (!here || s2.bonus > here.bonus)) here = s2; }
     let spot = null; if (here) { spot = here; total += here.bonus; if (!this.spotsHit.has(here.name)) { this.spotsHit.add(here.name); this.emit('spotFirst', { name: here.name, bonus: here.bonus }); } }
     this.score += total; this.session.bestCombo = Math.max(this.session.bestCombo, total);
-    if (this.score > this.best) { this.best = this.score; localStorage.setItem('css-best', String(this.best)); }
+    if (this.score > this.best) { this.best = this.score; storeSet('css-best', String(this.best)); }
     this.emit('bank', { total, n: real.length, spot: spot ? spot.name : null, tricks: real.map(t => t.name) });
     this.combo = []; this.comboPending = 0;
   }

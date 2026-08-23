@@ -23,6 +23,18 @@ skate. Keyboard on desktop, touch stick + buttons on phones.
   from primitives and small canvas textures. Business names appear as plain text for
   place recognition only — no logos, wordmarks or brand art.
 
+## What there is to do
+
+Free skate — no timer, no fail state. Score is THPS-style: trick base × combo length,
+banked when you settle, with named **spot bonuses** on real Burlington features (City Hall
+steps and hubba, the Firehouse piers, Big Joe's slab, the Insomnia boulders, the ski-lift
+bench at the top of the mall, the Pomerleau fountain, the Church terrace steps, the
+Fletcher Free steps, the globe pavers, the construction barriers). Eight **challenges**
+sit on the pause screen and persist between sessions — grind the City Hall handrail, land
+a 360 flip on the bricks, bomb College St from Church to Battery without bailing, manual
+40 m down the granite line, ollie onto a parked car, grind Big Joe's slab, bank a
+10,000-point combo, find every spot.
+
 ## Code map
 
 See `docs/ARCHITECTURE.md`. Short version: `js/skate.js` is the physics + tricks +
@@ -33,12 +45,15 @@ scoring (no rendering), `js/collide.js` is the physics world that the builders p
 ## Dev
 
 ```
-python3 -m http.server 8765 --bind 127.0.0.1   # then open http://localhost:8765/
-node scripts/shot.mjs out/prefix [mobile]        # headless playtest + screenshots (needs playwright)
+scripts/serve.sh &                               # static server on :8765
+node scripts/playtest.mjs                        # headless physics battery (needs playwright)
+node scripts/shot.mjs out/prefix [mobile]        # scripted keypresses + screenshots
+node scripts/shot-mobile.mjs out/prefix [portrait]  # touch-control + layout audit
 python3 tools/build_world.py                     # re-bake data/world.js from OSM + USGS
 ```
 
 `?test=1` loads a flat test course instead of Burlington (physics tuning).
+Pushing to `main` publishes to GitHub Pages (`.github/workflows/deploy.yml`).
 
 ## Attribution
 

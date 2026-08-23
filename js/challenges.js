@@ -1,3 +1,4 @@
+import { storeGet, storeSet } from './util.js';
 // Eight Burlington-specific things to go and do. Free-skate only: no timer, no failure —
 // they just tick off and stay ticked (localStorage). Driven by the same events the HUD reads.
 const KEY = 'css-challenges';
@@ -19,7 +20,7 @@ export class Challenges {
       { id: 'spots', name: 'Find every Burlington spot', hint: 'the yellow dots on the map' },
     ];
     let saved = [];
-    try { saved = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch { saved = []; }
+    try { saved = JSON.parse(storeGet(KEY, '[]')); } catch { saved = []; }
     this.done = new Set(Array.isArray(saved) ? saved : []);
     this.justDone = [];                 // drained by main.js each frame
     this._manual = 0;                   // metres of the current manual
@@ -32,7 +33,7 @@ export class Challenges {
   complete(id) {
     if (this.done.has(id)) return;
     this.done.add(id);
-    try { localStorage.setItem(KEY, JSON.stringify([...this.done])); } catch { /* private mode */ }
+    storeSet(KEY, JSON.stringify([...this.done]));
     const c = this.list.find(c => c.id === id);
     if (c) this.justDone.push(c);
   }
@@ -62,7 +63,7 @@ export class Challenges {
     this._prev.x = p.x; this._prev.z = p.z;
 
     // manual distance (any surface; the granite line runs the length of the brick)
-    if (sk.state === 'manual') { this._manual += moved; if (this._manual >= 40) this.complete('manual'); }
+    if (sk.state === 'manual' && sk.groundKind === 'brick') { this._manual += moved; if (this._manual >= 40) this.complete('manual'); }
     else if (sk.state !== 'air') this._manual = 0;
 
     // College St, Church → Battery, no bail. Armed at the top of the hill, in the corridor.

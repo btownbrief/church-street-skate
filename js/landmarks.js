@@ -75,6 +75,7 @@ class Merger {
       g.computeBoundingSphere();
       const mesh = new THREE.Mesh(g, mat);
       mesh.name = 'landmarks:' + (mat.name || 'mat');
+      if (b.col) mesh.material.vertexColors = true;
       if (ctx.quality.shadows) { mesh.castShadow = true; mesh.receiveShadow = true; }
       mesh.matrixAutoUpdate = false; mesh.updateMatrix();
       ctx.scene.add(mesh); out.push(mesh);
@@ -314,7 +315,7 @@ export function buildLandmarks(ctx) {
 
   book.finish();
   const meshes = mg.flush(ctx, 'landmarks');
-  console.info('[landmarks] %d draw calls, %d tris', meshes.length, Math.round(mg.tris));
+  console.info(`[landmarks] ${meshes.length} draw calls, ${Math.round(mg.tris)} tris`);
 }
 
 // ================================================================ landmark builders
@@ -501,9 +502,12 @@ L.cityHall = function (c) {
   // central landing
   const lx = fx(E, 0, oMid), lz = fz(E, 0, oMid);
   mg.add(B(6.6, LAND - PY + 1.5, oOut - oIn), mats.granite, lx, (LAND + PY - 1.5) / 2, lz, E.yaw);
-  // physics box is 0.9 m longer than the drawn landing so it overlaps the top of each stair
-  // ramp — flush at 6.6 there was a ~0.3 m crack that dropped the skater 2.4 m to the plaza.
-  ctx.collide.addSurface({ x: lx, z: lz, w: 7.5, d: oOut - oIn, yaw: surfYaw(E), top: LAND, bottom: PY - 0.5, kind: 'platform', name: 'City Hall landing' });
+  // The physics box is bigger than the drawn landing on purpose. Longer (7.5 vs 6.6) so it
+  // overlaps the top of each stair ramp — flush there was a ~0.3 m crack that dropped the
+  // skater 2.4 m to the plaza. And 0.9 m deeper, out past the cheek walls, so you can line
+  // up on the hubba and ollie onto it instead of falling off the corner first.
+  const cOut = oOut + 0.9, cMid = (oIn + cOut) / 2;
+  ctx.collide.addSurface({ x: fx(E, 0, cMid), z: fz(E, 0, cMid), w: 7.5, d: cOut - oIn, yaw: surfYaw(E), top: LAND, bottom: PY - 0.5, kind: 'platform', name: 'City Hall landing' });
   // recessed ground-level door + brick apron between the flights
   win(c, E, 0, PY + 0.05, 2.2, 2.4, 0.30, mats.granite, mats.brown, true);
   mg.add(B(5.5, 0.1, 4.2), mats.brickRed, fx(E, 0, oOut + 2.6), PY + 0.02, fz(E, 0, oOut + 2.6), E.yaw);

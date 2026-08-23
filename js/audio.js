@@ -1,6 +1,7 @@
+import { storeGet, storeSet } from './util.js';
 // Procedural WebAudio SFX — no samples. Rolling noise pitched by speed, pops, lands, grind buzz, bails.
 export class Audio {
-  constructor() { this.ctx = null; this.on = true; this.roll = null; this.grind = null; this.vol = 0.6; this.muted = localStorage.getItem('css-mute') === '1'; }
+  constructor() { this.ctx = null; this.on = true; this.roll = null; this.grind = null; this.vol = 0.6; this.muted = storeGet('css-mute') === '1'; }
   ensure() {
     if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return true; }
     const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return false;
@@ -18,7 +19,7 @@ export class Audio {
     osc.connect(bp); n2.connect(bp); bp.connect(gg); gg.connect(this.master); osc.start(); n2.start(); this.grind = { osc, bp, g: gg };
     return true;
   }
-  toggleMute() { this.muted = !this.muted; localStorage.setItem('css-mute', this.muted ? '1' : '0'); if (this.master) this.master.gain.value = this.muted ? 0 : this.vol; return this.muted; }
+  toggleMute() { this.muted = !this.muted; storeSet('css-mute', this.muted ? '1' : '0'); if (this.master) this.master.gain.value = this.muted ? 0 : this.vol; return this.muted; }
   _blip(freq, dur, type = 'square', gain = 0.25, slide = 0) {
     if (!this.ctx) return; const c = this.ctx, t = c.currentTime; const o = c.createOscillator(); o.type = type; o.frequency.setValueAtTime(freq, t); if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(20, freq + slide), t + dur);
     const g = c.createGain(); g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur); o.connect(g); g.connect(this.master); o.start(t); o.stop(t + dur + 0.02);

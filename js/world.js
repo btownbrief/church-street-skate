@@ -10,7 +10,9 @@ async function tryImport(path) { try { return await import(path); } catch (e) { 
 
 export async function buildWorld({ scene, renderer, camera, quality }) {
   const testMode = /[?&]test=1/.test(location.search);
-  const dataMod = testMode ? null : await tryImport('../data/world.js');
+  // Outside ?test=1 the generated world is REQUIRED: silently falling back to the synthetic
+  // course would make a broken deploy look like a successful one with Burlington missing.
+  const dataMod = testMode ? null : await import('../data/world.js');
   const WORLD = dataMod ? dataMod.WORLD : makeTestWorld();
   const terrain = new Terrain(WORLD.terrain, { smooth: dataMod ? 2 : 0 });
   const collide = new CollisionWorld(terrain);
@@ -59,6 +61,7 @@ export async function buildWorld({ scene, renderer, camera, quality }) {
       if (hit) { sk.vel.x *= 0.2; sk.vel.z *= 0.2; }
     },
     degrade(renderer) {
+      if (degradeLevel >= 3) return;                    // nothing left to turn off
       degradeLevel++;
       if (degradeLevel === 1) { renderer.shadowMap.enabled = false; scene.traverse(o => { if (o.isLight) o.castShadow = false; }); }
       else if (degradeLevel === 2) renderer.setPixelRatio(Math.max(1, renderer.getPixelRatio() * 0.75));

@@ -90,7 +90,8 @@ export function createTraffic(ctx) {
   const lam = () => new THREE.MeshLambertMaterial({ color: 0xffffff });
 
   const nMove = Math.max(6, Math.round(22 * (quality.traffic || 1)));
-  const nPark = Math.max(10, Math.round(86 * (quality.traffic || 1)));
+  const nPark = Math.max(10, Math.round((quality.mobile ? 46 : 86) * (quality.traffic || 1)));
+  let parkedShown = nPark;                 // trimmed by degrade()
   const CAP = nMove + nPark;                 // parked occupy [0, nPark), movers [nPark, CAP)
 
   const _hide = new THREE.Matrix4().makeScale(0, 0, 0).setPosition(0, -500, 0);
@@ -206,6 +207,7 @@ export function createTraffic(ctx) {
     for (const sl of slots) sl.k = (0.35 + rnd()) * (1 + distToMall(sl.x, sl.z) / 110);
     slots.sort((a, b) => a.k - b.k);
     const take = Math.min(nPark, slots.length);
+    parkedShown = take;
     for (let i = 0; i < take; i++) {
       const sl = slots[i], T = pickType();
       const y = terrain.heightAt(sl.x, sl.z) + 0.02;
@@ -318,6 +320,7 @@ export function createTraffic(ctx) {
 
   // ---- the GMT bus -------------------------------------------------------
   const busEdges = edges.filter(e => e.bus);
+  const _busOpts = [];        // reused: picking the bus's next edge must not allocate
   const bus = { on: busEdges.length > 0, e: null, dir: 1, s: 0, v: 0, x: 0, y: 0, z: 0, yaw: 0, pitch: 0, ux: 0, uz: -1, blocked: 0, honked: false, len: 10.6 };
   let busGroup = null;
   if (bus.on) {
@@ -451,8 +454,9 @@ export function createTraffic(ctx) {
       if (bus.dir > 0 ? bus.s >= bus.e.len : bus.s <= 0) {
         // stay on bus streets: pick another bus edge at that node, else turn round
         const en = bus.dir > 0 ? bus.e.b : bus.e.a;
-        const opts = nodes[en].edges.map(i => edges[i]).filter(e => e.bus && e !== bus.e && (e.a === en ? e.fwdOK : e.backOK));
-        if (opts.length) { const ne = opts[(rnd() * opts.length) | 0]; bus.dir = ne.a === en ? 1 : -1; bus.e = ne; bus.s = bus.dir > 0 ? 0 : ne.len; }
+        _busOpts.length = 0;
+        for (const i of nodes[en].edges) { const e = edges[i]; if (e.bus && e !== bus.e && (e.a === en ? e.fwdOK : e.backOK)) _busOpts.push(e); }
+        if (_busOpts.length) { const ne = _busOpts[(rnd() * _busOpts.length) | 0]; bus.dir = ne.a === en ? 1 : -1; bus.e = ne; bus.s = bus.dir > 0 ? 0 : ne.len; }
         else { bus.dir *= -1; bus.s = clamp(bus.s, 0, bus.e.len); }
       }
       edgeAt(bus.e, bus.s, 1.95 * bus.dir, _e);
@@ -483,7 +487,13 @@ export function createTraffic(ctx) {
   if (typeof location !== 'undefined' && location.search.indexOf('npcdebug') >= 0) {
     window.__carDbg = (sx, sz) => { let b = null, bd = 1e9; for (let i = 0; i < active; i++) { const c = cars[i]; if (!c.e) continue; const d = Math.hypot(c.x - sx, c.z - sz); if (d < bd) { bd = d; b = c; } } return b ? { x: b.x, z: b.z, y: b.y, ux: b.ux, uz: b.uz, v: b.v, d: bd, blocked: b.blocked, n: cars.length, parked: nPark, bus: bus.on ? { x: bus.x, z: bus.z, v: bus.v } : null } : null; };
   }
-  update.degrade = () => { active = Math.max(3, active >> 1); applyCount(); };
+  update.degrade = () => {
+    active = Math.max(3, active >> 1); applyCount();
+    // hide half the parked cars too — they are the biggest slice of the traffic budget
+    parkedShown = Math.max(6, parkedShown >> 1);
+    for (let i = parkedShown; i < nPark; i++) { part(bodyM, i, 0, -500, 0, 0.001, 0.001, 0.001); part(cabinM, i, 0, -500, 0, 0.001, 0.001, 0.001); for (let k = 0; k < 4; k++) { part(wheelM, i * 4 + k, 0, -500, 0, 0.001, 0.001, 0.001); part(lightM, i * 4 + k, 0, -500, 0, 0.001, 0.001, 0.001); } }
+    bodyM.instanceMatrix.needsUpdate = cabinM.instanceMatrix.needsUpdate = wheelM.instanceMatrix.needsUpdate = lightM.instanceMatrix.needsUpdate = true;
+  };
   updaters.push(update);
 
   function roadHalfWidth(r) { return roadWidth(r) / 2; }

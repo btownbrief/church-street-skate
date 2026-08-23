@@ -9,7 +9,7 @@ import { Hud } from './hud.js';
 import { Audio } from './audio.js';
 import { buildWorld } from './world.js';
 import { Challenges } from './challenges.js';
-import { isMobile, isTouch } from './util.js';
+import { isMobile, isTouch, storeGet, storeSet } from './util.js';
 import { installDev } from './devhooks.js';
 
 const $ = (s) => document.querySelector(s);
@@ -64,7 +64,7 @@ async function boot() {
 function start() {
   audio.ensure(); $('#screen-title').classList.remove('on'); running = true; paused = false; last = performance.now();
   // first-play touch hint: shown until the player's first ollie, then never again
-  if (touch && !localStorage.getItem('css-ollied')) document.body.classList.add('show-hint');
+  if (touch && !storeGet('css-ollied')) document.body.classList.add('show-hint');
   requestAnimationFrame(frame);
 }
 function setPaused(p) {
@@ -101,7 +101,7 @@ function stepGame(dt, now) {
     if (ev.type === 'land' && ev.speed > 8) follow.kick(0.25);
     if (ev.type === 'pop' && document.body.classList.contains('show-hint')) {
       document.body.classList.add('hint-out');
-      try { localStorage.setItem('css-ollied', '1'); } catch { /* private mode */ }
+      storeSet('css-ollied', '1');
       setTimeout(() => document.body.classList.remove('show-hint', 'hint-out'), 700);
     }
   }

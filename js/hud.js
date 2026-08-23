@@ -18,6 +18,8 @@ export class Hud {
       <div id="speed"></div>`;
     this.el = { score: root.querySelector('#score-val'), best: root.querySelector('#best-val'), loc: root.querySelector('#loc-name'), combo: root.querySelector('#combo'), comboTricks: root.querySelector('#combo-tricks'), comboTotal: root.querySelector('#combo-total'), balance: root.querySelector('#balance'), knob: root.querySelector('#balance-knob'), popups: root.querySelector('#popups'), callout: root.querySelector('#callout'), map: root.querySelector('#minimap'), speed: root.querySelector('#speed'), btnMap: root.querySelector('#btn-map'), btnPause: root.querySelector('#btn-pause') };
     this.shownScore = 0; this.mapOn = true; this.comboFlash = 0; this._lastLoc = ''; this._locT = 0; this._calloutT = 0;
+    this.combo = [];                      // reused scratch for the combo ticker (no per-frame alloc)
+    this._best = -1; this._mph = -1; this._comboHtml = ''; this._comboTotalTxt = '';
     this.mapCtx = this.el.map.getContext('2d');
     this.el.btnMap.addEventListener('click', () => this.toggleMap());
     this.mapScale = 1; // px per metre (set per frame)
@@ -45,30 +47,36 @@ export class Hud {
   update(dt, sk, loc) {
     // score counts up
     const target = sk.score; if (this.shownScore !== target) { this.shownScore += Math.ceil((target - this.shownScore) * Math.min(1, dt * 8)); if (Math.abs(target - this.shownScore) < 2) this.shownScore = target; this.el.score.textContent = this.shownScore.toLocaleString(); }
-    this.el.best.textContent = 'best ' + sk.best.toLocaleString();
-    // combo
-    const real = sk.combo.filter(t => !t.silent);
+    if (this._best !== sk.best) { this._best = sk.best; this.el.best.textContent = 'best ' + sk.best.toLocaleString(); }
+    // combo — counted in place, no per-frame array allocation
+    let nReal = 0, sum = 0;
+    for (const t of sk.combo) { sum += t.pts; if (!t.silent) nReal++; }
     // live (in-progress) trick: grind or manual accumulating points
-    let live = null;
-    if (sk.state === 'grind' && sk.grind) live = { name: sk.grind.type + (sk.grind.edge.name ? ' · ' + sk.grind.edge.name : ''), pts: 80 + 90 * sk.grind.time };
-    else if (sk.state === 'manual' && sk.manual) live = { name: sk.manual.nose ? 'Nose Manual' : 'Manual', pts: 60 + 70 * sk.manual.time };
-    if (real.length || live) {
+    let liveName = null, livePts = 0;
+    if (sk.state === 'grind' && sk.grind) { liveName = sk.grind.type + (sk.grind.edge.name ? ' · ' + sk.grind.edge.name : ''); livePts = 80 + 90 * sk.grind.time; }
+    else if (sk.state === 'manual' && sk.manual) { liveName = sk.manual.nose ? 'Nose Manual' : 'Manual'; livePts = 60 + 70 * sk.manual.time; }
+    if (nReal || liveName) {
+      this.combo.length = 0;
+      for (const t of sk.combo) if (!t.silent) this.combo.push(t.name);
+      if (this.combo.length > 5) this.combo.splice(0, this.combo.length - 5);
+      if (liveName) this.combo.push(`<span class="live">${liveName}</span>`);
+      const names = this.combo.join(' <span class="plus">+</span> ');
       this.el.combo.classList.add('on');
-      const list = real.slice(-5).map(t => t.name); if (live) list.push(`<span class="live">${live.name}</span>`);
-      const names = list.join(' <span class="plus">+</span> ');
       if (this._comboHtml !== names) { this.el.comboTricks.innerHTML = names; this._comboHtml = names; }
-      const sum = real.reduce((a, t) => a + t.pts, 0) + (sk.combo.length - real.length) * 10 + (live ? Math.round(live.pts) : 0);
-      const n = real.length + (live ? 1 : 0);
-      this.el.comboTotal.textContent = `${sum.toLocaleString()} × ${Math.min(n, 8)}`;
+      const total = sum + Math.round(livePts);
+      const n = nReal + (liveName ? 1 : 0);
+      const txt = `${total.toLocaleString()} × ${Math.min(n, 8)}`;
+      if (this._comboTotalTxt !== txt) { this._comboTotalTxt = txt; this.el.comboTotal.textContent = txt; }
       this.comboFlash = Math.max(0, this.comboFlash - dt * 3); this.el.comboTotal.style.transform = `scale(${1 + this.comboFlash * 0.25})`;
-    } else { this.el.combo.classList.remove('on'); this._comboHtml = ''; }
+    } else if (this._comboHtml !== '') { this.el.combo.classList.remove('on'); this._comboHtml = ''; this._comboTotalTxt = ''; }
     // balance meter
     if (sk.state === 'grind' || sk.state === 'manual') { this.el.balance.classList.add('on'); this.el.knob.style.left = (50 + clamp(sk.balance, -1, 1) * 46) + '%'; this.el.knob.style.background = Math.abs(sk.balance) > 0.7 ? '#ff4d3d' : '#ffd84d'; }
     else this.el.balance.classList.remove('on');
     // location
     if (loc && loc !== this._lastLoc) { this._lastLoc = loc; this.el.loc.textContent = loc; this.el.loc.parentElement.classList.add('flash'); setTimeout(() => this.el.loc.parentElement.classList.remove('flash'), 600); }
     if (this._calloutT > 0) { this._calloutT -= dt; if (this._calloutT <= 0) this.el.callout.classList.remove('on'); }
-    this.el.speed.textContent = `${Math.round(sk.speed * 2.237)} mph`;
+    const mph = Math.round(sk.speed * 2.237);
+    if (this._mph !== mph) { this._mph = mph; this.el.speed.textContent = mph + ' mph'; }
     if (this.mapOn) this.drawMap(sk);
   }
 

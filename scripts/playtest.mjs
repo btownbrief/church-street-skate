@@ -80,7 +80,7 @@ tests.cityhall = async () => {
   // Real approaches: roll off the City Hall landing down each flight and catch the rail.
   const runs = [
     ['N handrail', -12.58, 90.5, 0], ['N hubba', -9.55, 90.5, 0],
-    ['S handrail', -11.90, 88.5, Math.PI], ['S hubba', -8.87, 88.5, Math.PI],
+    ['S handrail', -11.90, 88.5, Math.PI], ['S hubba', -9.2, 88.5, Math.PI],
   ];
   for (const [name, x, z, yaw] of runs) {
     const r = await ev(([x, z, yaw]) => {

@@ -61,3 +61,12 @@ export function textTexture(text, { w = 512, h = 128, font = 'bold 64px Helvetic
 
 export const isTouch = () => ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
 export const isMobile = () => isTouch() && Math.min(window.innerWidth, window.innerHeight) < 900;
+
+// localStorage throws outright in some private-browsing modes; a game must never die for
+// want of a high score. Every read and write in the game goes through these.
+export function storeGet(key, fallback = null) {
+  try { const v = localStorage.getItem(key); return v === null ? fallback : v; } catch { return fallback; }
+}
+export function storeSet(key, value) {
+  try { localStorage.setItem(key, value); return true; } catch { return false; }
+}
