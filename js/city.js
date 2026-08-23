@@ -391,6 +391,7 @@ function signPlane(buf, e, t, y, w, h, out, uv) {
 // ---------------------------------------------------------------------------
 export function buildCity(ctx) {
   const { scene, WORLD, terrain, collide, quality } = ctx;
+  const mobile = !!quality.mobile;
   const landmarkIds = ctx.landmarkIds || new Set();
   const buildings = WORLD.buildings || [];
 
@@ -516,7 +517,10 @@ export function buildCity(ctx) {
       buildGable(trim, pts, top, hh);
     } else {
       capPolygon(trim, pts, top - 0.22, mix(0x4a4a46, 0xffffff, ((hh >>> 5) & 7) / 42));
-      for (let i = 0; i < pts.length; i++) {
+      // Roof edge detail costs 4 tris per wall segment across 1,100 buildings. On a phone
+      // only the buildings you actually skate past get it; the rest just get the roof cap.
+      const roofDetail = !mobile || dCore < 140;
+      if (roofDetail) for (let i = 0; i < pts.length; i++) {
         const a = pts[i], q = pts[(i + 1) % pts.length];
         const dx = q[0] - a[0], dz = q[1] - a[1]; const L = Math.hypot(dx, dz); if (L < 0.05) continue;
         const nx = -dz / L, nz = dx / L, p = 0.34;
@@ -530,7 +534,7 @@ export function buildCity(ctx) {
           strip(trim, e, 0, L, y0, y1, pr, 0xa39a8d, false);
         }
       }
-      if (core && area > 220) {
+      if (core && area > 220 && !mobile) {
         const rr = rng(hh || 3);
         const spread = Math.sqrt(area) * 0.55;
         for (let k = 0, tries = 0; k < 1 + ((hh >> 3) % 3) && tries < 8; tries++) {
@@ -630,23 +634,24 @@ export function buildCity(ctx) {
   // build the meshes
   // =========================================================================
   const meshes = [];
-  const addMesh = (geo, mat, cast) => {
+  const addMesh = (geo, mat, cast, label) => {
     const m = new THREE.Mesh(geo, mat);
+    m.name = 'city:' + (label || 'part');
     m.castShadow = !!(cast && quality.shadows); m.receiveShadow = !!quality.shadows;
     m.matrixAutoUpdate = false; m.updateMatrix();
     scene.add(m); meshes.push(m); return m;
   };
-  for (const s of styles) if (!facBuf[s].empty) addMesh(facBuf[s].geometry(), facMat[s], true);
-  if (!trim.empty) addMesh(trim.geometry(), new THREE.MeshLambertMaterial({ vertexColors: true }), true);
-  if (!glass.empty) addMesh(glass.geometry(), new THREE.MeshBasicMaterial({ vertexColors: true }), false);
-  if (!awn.empty) addMesh(awn.geometry(), new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), true);
+  for (const s of styles) if (!facBuf[s].empty) addMesh(facBuf[s].geometry(), facMat[s], true, 'facade:' + s);
+  if (!trim.empty) addMesh(trim.geometry(), new THREE.MeshLambertMaterial({ vertexColors: true }), true, 'trim');
+  if (!glass.empty) addMesh(glass.geometry(), new THREE.MeshBasicMaterial({ vertexColors: true }), false, 'glass');
+  if (!awn.empty) addMesh(awn.geometry(), new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), true, 'awning');
   if (!cano.empty) {
     const m = addMesh(cano.geometry(), new THREE.MeshLambertMaterial({
       vertexColors: true, transparent: true, opacity: 0.32, side: THREE.DoubleSide, depthWrite: false,
-    }), false);
+    }), false, 'canopy');
     m.renderOrder = 2;
   }
-  if (!signB.empty) addMesh(signB.geometry(), new THREE.MeshBasicMaterial({ map: atlas.texture(), transparent: true, alphaTest: 0.02 }), false);
+  if (!signB.empty) addMesh(signB.geometry(), new THREE.MeshBasicMaterial({ map: atlas.texture(), transparent: true, alphaTest: 0.02 }), false, 'signs');
 
   console.info(`[city] ${nBuilt} buildings · ${placedSigns.length} signs · ${atlas.n} atlas cells · ${meshes.length} draw calls · ${unplaced.length} unplaced`);
   ctx.cityInfo = { buildings: nBuilt, signs: placedSigns, unplaced, ghosts, mural: !!muralOk, vacancies: usedVac.size, draws: meshes.length, signBandY: [SIGN_Y0, SIGN_Y1], canopyY: CANOPY_Y, canopyOut: CANOPY_OUT };

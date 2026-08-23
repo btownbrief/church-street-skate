@@ -62,14 +62,17 @@ export function buildProps(ctx) {
     if (rx) g.rotateX(rx); if (rz) g.rotateZ(rz); if (ry) g.rotateY(ry);
     g.translate(x, y, z); return g;
   };
+  // Every round primitive goes through SEG, so one flag coarsens the whole street kit on a
+  // phone (the art is faceted anyway, so it mostly reads as "more low-poly").
+  const SEG = mobile ? (n) => Math.max(3, Math.round(n * 0.6)) : (n) => n;
   const box = (w, h, d, hex, x, y, z, ry, rx, rz) => colorize(xf(new THREE.BoxGeometry(w, h, d), x, y, z, ry, rx, rz), hex);
-  const cyl = (rt, rb, h, seg, hex, x, y, z, ry, rx, rz) => colorize(xf(new THREE.CylinderGeometry(rt, rb, h, seg, 1), x, y, z, ry, rx, rz), hex);
-  const tube = (rt, rb, h, seg, hex, x, y, z, ry, rx, rz) => colorize(xf(new THREE.CylinderGeometry(rt, rb, h, seg, 1, true), x, y, z, ry, rx, rz), hex);
-  const sph = (r, seg, hex, x, y, z, sx, sy, sz) => { const g = new THREE.SphereGeometry(r, seg, Math.max(3, seg >> 1)); if (sx !== undefined) g.scale(sx, sy, sz); return colorize(xf(g, x, y, z), hex); };
-  const ico = (r, det, hex) => colorize(new THREE.IcosahedronGeometry(r, det), hex);
+  const cyl = (rt, rb, h, seg, hex, x, y, z, ry, rx, rz) => colorize(xf(new THREE.CylinderGeometry(rt, rb, h, SEG(seg), 1), x, y, z, ry, rx, rz), hex);
+  const tube = (rt, rb, h, seg, hex, x, y, z, ry, rx, rz) => colorize(xf(new THREE.CylinderGeometry(rt, rb, h, SEG(seg), 1, true), x, y, z, ry, rx, rz), hex);
+  const sph = (r, seg, hex, x, y, z, sx, sy, sz) => { const s2 = SEG(seg); const g = new THREE.SphereGeometry(r, s2, Math.max(3, s2 >> 1)); if (sx !== undefined) g.scale(sx, sy, sz); return colorize(xf(g, x, y, z), hex); };
+  const ico = (r, det, hex) => colorize(new THREE.IcosahedronGeometry(r, mobile ? Math.min(det, 0) : det), hex);
   const quad = (w, h, hex, x, y, z, ry, rx, rz) => colorize(xf(new THREE.PlaneGeometry(w, h), x, y, z, ry, rx, rz), hex);
-  const disc = (r, seg, hex, x, y, z) => colorize(xf(new THREE.CircleGeometry(r, seg), x, y, z, 0, -Math.PI / 2), hex);
-  const torus = (r, t, seg, arc, hex, x, y, z, ry, rx) => colorize(xf(new THREE.TorusGeometry(r, t, 4, seg, arc), x, y, z, ry, rx), hex);
+  const disc = (r, seg, hex, x, y, z) => colorize(xf(new THREE.CircleGeometry(r, SEG(seg)), x, y, z, 0, -Math.PI / 2), hex);
+  const torus = (r, t, seg, arc, hex, x, y, z, ry, rx) => colorize(xf(new THREE.TorusGeometry(r, t, mobile ? 3 : 4, SEG(seg), arc), x, y, z, ry, rx), hex);
   // world offsets in an object's local frame (rotation.y = yaw): +X along, +Z across
   const oxx = (x, yaw, d) => x + Math.cos(yaw) * d;
   const oxz = (z, yaw, d) => z - Math.sin(yaw) * d;

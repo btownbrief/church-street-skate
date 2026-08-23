@@ -93,7 +93,14 @@ export function createTraffic(ctx) {
   const nPark = Math.max(10, Math.round(86 * (quality.traffic || 1)));
   const CAP = nMove + nPark;                 // parked occupy [0, nPark), movers [nPark, CAP)
 
-  const mk = (geo, mat, n) => { const m = new THREE.InstancedMesh(geo, mat, n); m.frustumCulled = false; m.castShadow = !!quality.shadows; m.receiveShadow = false; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(m); return m; };
+  const _hide = new THREE.Matrix4().makeScale(0, 0, 0).setPosition(0, -500, 0);
+  const mk = (geo, mat, n, label) => {
+    const m = new THREE.InstancedMesh(geo, mat, n); m.name = 'traffic:' + (label || 'part');
+    m.frustumCulled = false; m.castShadow = !!quality.shadows; m.receiveShadow = false;
+    m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    for (let i = 0; i < n; i++) m.setMatrixAt(i, _hide);   // unused slots must not sit at the origin
+    scene.add(m); return m;
+  };
   const bodyM = mk(BOX, lam(), CAP);
   const cabinM = mk(BOX, lam(), CAP);
   const wheelM = mk(WHEEL, new THREE.MeshLambertMaterial({ color: 0x16171a }), CAP * 4);

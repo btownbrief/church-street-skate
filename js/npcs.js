@@ -206,17 +206,26 @@ export function createNpcs(ctx) {
   const CAP = nStatic + nWalk;
 
   const lam = (opts) => new THREE.MeshLambertMaterial(Object.assign({ color: 0xffffff }, opts || {}));
-  const mk = (geo, mat, n) => { const m = new THREE.InstancedMesh(geo, mat, n); m.frustumCulled = false; m.castShadow = !!quality.shadows; m.receiveShadow = false; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(m); return m; };
+  const _hide = new THREE.Matrix4().makeScale(0, 0, 0).setPosition(0, -500, 0);
+  const mk = (geo, mat, n, label) => {
+    const m = new THREE.InstancedMesh(geo, mat, n); m.name = 'npcs:' + (label || 'part');
+    m.frustumCulled = false; m.castShadow = !!quality.shadows; m.receiveShadow = false;
+    m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    // Any slot never written keeps the identity matrix — a 1 m cube at the world origin,
+    // which is Church & College. Park them all off-world first.
+    for (let i = 0; i < n; i++) m.setMatrixAt(i, _hide);
+    scene.add(m); return m;
+  };
 
   const P = {
-    torso: mk(BOX, lam(), CAP),
-    head: mk(BOX, lam(), CAP),
-    hat: mk(BOX, lam(), CAP),
-    legL: mk(BOX, lam(), CAP),
-    legR: mk(BOX, lam(), CAP),
-    armL: mk(BOX, lam(), CAP),
-    armR: mk(BOX, lam(), CAP),
-    acc: mk(BOX, lam(), CAP),
+    torso: mk(BOX, lam(), CAP, 'torso'),
+    head: mk(BOX, lam(), CAP, 'head'),
+    hat: mk(BOX, lam(), CAP, 'hat'),
+    legL: mk(BOX, lam(), CAP, 'legL'),
+    legR: mk(BOX, lam(), CAP, 'legR'),
+    armL: mk(BOX, lam(), CAP, 'armL'),
+    armR: mk(BOX, lam(), CAP, 'armR'),
+    acc: mk(BOX, lam(), CAP, 'acc'),
   };
   const PARTS = [P.torso, P.head, P.hat, P.legL, P.legR, P.armL, P.armR, P.acc];
 
@@ -232,7 +241,7 @@ export function createNpcs(ctx) {
     [new THREE.BoxGeometry(0.06, 0.06, 0.24), 0, 0.54, 0.36, -0.5, 0, 0, 0xffffff],
   ]);
   const nDogs = Math.max(2, Math.round(6 * (quality.npcs || 1)));
-  const dogMesh = mk(dogGeo, lam({ vertexColors: true }), nDogs);
+  const dogMesh = mk(dogGeo, lam({ vertexColors: true }), nDogs, 'dog');
 
   // ---- café furniture instances -----------------------------------------
   const tableGeo = mergeGeos([
@@ -255,9 +264,9 @@ export function createNpcs(ctx) {
   ]);
   const nT = cafes.reduce((a, c) => a + c.tables.length, 0);
   const nC = cafes.reduce((a, c) => a + c.chairs.length, 0);
-  const tableMesh = mk(tableGeo, lam({ color: 0x2b2b2e }), Math.max(1, nT));
-  const chairMesh = mk(chairGeo, lam({ color: 0x232326 }), Math.max(1, nC));
-  const umbMesh = mk(umbGeo, lam({ vertexColors: true }), Math.max(1, nT));
+  const tableMesh = mk(tableGeo, lam({ color: 0x2b2b2e }), Math.max(1, nT), 'table');
+  const chairMesh = mk(chairGeo, lam({ color: 0x232326 }), Math.max(1, nC), 'chair');
+  const umbMesh = mk(umbGeo, lam({ vertexColors: true }), Math.max(1, nT), 'umbrella');
   tableMesh.castShadow = chairMesh.castShadow = umbMesh.castShadow = !!quality.shadows;
   tableMesh.receiveShadow = true;
 

@@ -13,12 +13,38 @@ const UP = new THREE.Vector3(0, 1, 0);
 const ZERO = new THREE.Vector3();
 
 const lam = (c) => new THREE.MeshLambertMaterial({ color: c });
-const M = {
-  skin: lam(0xd8a077), hoodie: lam(0xd4553a), hood: lam(0xa93a25), pants: lam(0x2f3648),
-  shoe: lam(0xf1eee3), sole: lam(0x1b1d24), cap: lam(0x1d2b45), bill: lam(0x141d31),
-  grip: lam(0x15171c), side: lam(0x2c9a58), kick: lam(0xf0c33c),
-  truck: lam(0xb9bec6), wheel: lam(0xf3ecd6),
+const C = {
+  skin: 0xd8a077, hoodie: 0xd4553a, hood: 0xa93a25, pants: 0x2f3648,
+  shoe: 0xf1eee3, sole: 0x1b1d24, cap: 0x1d2b45, bill: 0x141d31,
+  grip: 0x15171c, side: 0x2c9a58, kick: 0xf0c33c, truck: 0xb9bec6, wheel: 0xf3ecd6,
 };
+const M = {}; for (const k in C) M[k] = lam(C[k]);
+// One shared vertex-coloured material for every rigid cluster (board hardware, torso,
+// head, feet). Merging those clusters takes the player from 33 draw calls to 17.
+const MVC = new THREE.MeshLambertMaterial({ vertexColors: true });
+const _tmpC = new THREE.Color(), _tmpM = new THREE.Matrix4(), _tmpE = new THREE.Euler(), _tmpQ = new THREE.Quaternion(), _tmpV = new THREE.Vector3(), _tmpS = new THREE.Vector3();
+// specs: { g:'box'|'cyl', s:[x,y,z], p:[x,y,z], r:[x,y,z], c: hex }
+function mergeParts(specs) {
+  const pos = [], nor = [], col = [];
+  for (const sp of specs) {
+    const src = sp.g === 'cyl' ? CYL : BOX;
+    const g = src.index ? src.toNonIndexed() : src.clone();
+    const r = sp.r || [0, 0, 0];
+    _tmpE.set(r[0], r[1], r[2]); _tmpQ.setFromEuler(_tmpE);
+    _tmpV.set(sp.p[0], sp.p[1], sp.p[2]); _tmpS.set(sp.s[0], sp.s[1], sp.s[2]);
+    g.applyMatrix4(_tmpM.compose(_tmpV, _tmpQ, _tmpS));
+    const P = g.attributes.position.array, N = g.attributes.normal.array;
+    _tmpC.setHex(sp.c);
+    for (let i = 0; i < P.length; i++) { pos.push(P[i]); nor.push(N[i]); }
+    for (let i = 0; i < P.length / 3; i++) { col.push(_tmpC.r, _tmpC.g, _tmpC.b); }
+    g.dispose();
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  out.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  out.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  return out;
+}
 
 // Bright underside graphic — the camera sees this every flip. Vermont green/yellow.
 function deckTexture() {
@@ -74,22 +100,28 @@ export class SkaterMesh {
     const o = new THREE.Mesh(BOX, m); o.scale.set(sx, sy, sz); o.position.set(px, py, pz);
     o.castShadow = this.shadows; parent.add(o); return o;
   }
+  _merge(parent, specs) {
+    const o = new THREE.Mesh(mergeParts(specs), MVC);
+    o.castShadow = this.shadows; parent.add(o); return o;
+  }
   _buildBoard() {
     const b = this.board;
-    const deckMats = [M.side, M.side, M.grip, deckTexture(), M.side, M.side]; // +x -x +y -y +z -z
-    const deck = new THREE.Mesh(BOX, deckMats); deck.scale.set(0.235, 0.022, 0.60); deck.position.y = 0.105;
-    deck.castShadow = this.shadows; b.add(deck);
-    // kicked nose (−z) and tail (+z)
-    const nose = this._box(b, 0.215, 0.022, 0.155, M.kick, 0, 0.136, -0.371); nose.rotation.x = 0.42;
-    const tail = this._box(b, 0.215, 0.022, 0.155, M.kick, 0, 0.136, 0.371); tail.rotation.x = -0.42;
+    // whole board in one mesh: deck body, kicked nose/tail, trucks, wheels
+    const parts = [
+      { g: 'box', s: [0.235, 0.022, 0.60], p: [0, 0.105, 0], c: C.side },          // deck body / rails
+      { g: 'box', s: [0.229, 0.005, 0.585], p: [0, 0.1175, 0], c: C.grip },        // griptape
+      { g: 'box', s: [0.215, 0.022, 0.155], p: [0, 0.136, -0.371], r: [0.42, 0, 0], c: C.kick },
+      { g: 'box', s: [0.215, 0.022, 0.155], p: [0, 0.136, 0.371], r: [-0.42, 0, 0], c: C.kick },
+    ];
     for (const z of [-0.2, 0.2]) {
-      this._box(b, 0.075, 0.062, 0.10, M.truck, 0, 0.064, z);
-      this._box(b, 0.205, 0.022, 0.032, M.truck, 0, 0.036, z);
-      for (const x of [-0.101, 0.101]) {
-        const w = new THREE.Mesh(CYL, M.wheel); w.scale.set(0.032, 0.046, 0.032); w.rotation.z = Math.PI / 2;
-        w.position.set(x, 0.033, z); w.castShadow = this.shadows; b.add(w);
-      }
+      parts.push({ g: 'box', s: [0.075, 0.062, 0.10], p: [0, 0.064, z], c: C.truck });
+      parts.push({ g: 'box', s: [0.205, 0.022, 0.032], p: [0, 0.036, z], c: C.truck });
+      for (const x of [-0.101, 0.101]) parts.push({ g: 'cyl', s: [0.032, 0.046, 0.032], p: [x, 0.033, z], r: [0, 0, Math.PI / 2], c: C.wheel });
     }
+    this._merge(b, parts);
+    // the underside graphic — the camera sees it on every flip — is its own thin plane
+    const gfx = new THREE.Mesh(new THREE.PlaneGeometry(0.235, 0.60), deckTexture());
+    gfx.rotation.x = Math.PI / 2; gfx.position.y = 0.0935; b.add(gfx);
   }
   _limb(parent, L1, L2, up1, up2, matU, matL) {
     const g = new THREE.Group(); parent.add(g);
@@ -105,18 +137,22 @@ export class SkaterMesh {
     // legs live in rig space so foot targets are simple board-space points
     this.legF = this._limb(rig, 0.42, 0.42, [0.15, 0.165], [0.12, 0.135], M.pants, M.pants);
     this.legB = this._limb(rig, 0.42, 0.42, [0.15, 0.165], [0.12, 0.135], M.pants, M.pants);
-    for (const leg of [this.legF, this.legB]) {
-      this._box(leg.end, 0.115, 0.075, 0.255, M.shoe, 0, -0.005, -0.02);   // toes at −z
-      this._box(leg.end, 0.125, 0.028, 0.265, M.sole, 0, -0.05, -0.02);
-    }
+    for (const leg of [this.legF, this.legB]) this._merge(leg.end, [
+      { g: 'box', s: [0.115, 0.075, 0.255], p: [0, -0.005, -0.02], c: C.shoe },   // toes at −z
+      { g: 'box', s: [0.125, 0.028, 0.265], p: [0, -0.05, -0.02], c: C.sole },
+    ]);
     const sp = this.spine = new THREE.Group(); rig.add(sp);
-    this._box(sp, 0.29, 0.17, 0.215, M.pants, 0, 0.02, 0);                 // hips
-    this._box(sp, 0.355, 0.44, 0.235, M.hoodie, 0, 0.28, 0);               // torso
-    this._box(sp, 0.30, 0.15, 0.16, M.hood, 0, 0.495, 0.075);              // hood bunched behind the neck
+    this._merge(sp, [
+      { g: 'box', s: [0.29, 0.17, 0.215], p: [0, 0.02, 0], c: C.pants },          // hips
+      { g: 'box', s: [0.355, 0.44, 0.235], p: [0, 0.28, 0], c: C.hoodie },        // torso
+      { g: 'box', s: [0.30, 0.15, 0.16], p: [0, 0.495, 0.075], c: C.hood },       // hood behind the neck
+    ]);
     const hd = this.head = new THREE.Group(); hd.position.y = 0.50; sp.add(hd);
-    this._box(hd, 0.19, 0.205, 0.195, M.skin, 0, 0.11, 0);
-    this._box(hd, 0.207, 0.098, 0.212, M.cap, 0, 0.215, 0);
-    const bill = this._box(hd, 0.185, 0.03, 0.105, M.bill, 0, 0.193, 0.148); bill.rotation.x = -0.14; // backwards cap
+    this._merge(hd, [
+      { g: 'box', s: [0.19, 0.205, 0.195], p: [0, 0.11, 0], c: C.skin },
+      { g: 'box', s: [0.207, 0.098, 0.212], p: [0, 0.215, 0], c: C.cap },
+      { g: 'box', s: [0.185, 0.03, 0.105], p: [0, 0.193, 0.148], r: [-0.14, 0, 0], c: C.bill }, // backwards cap
+    ]);
     this.armL = this._limb(sp, 0.32, 0.30, [0.105, 0.105], [0.092, 0.092], M.hoodie, M.hoodie);
     this.armR = this._limb(sp, 0.32, 0.30, [0.105, 0.105], [0.092, 0.092], M.hoodie, M.hoodie);
     this.armL.position.set(-0.195, 0.44, 0); this.armR.position.set(0.195, 0.44, 0);

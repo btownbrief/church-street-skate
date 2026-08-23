@@ -49,12 +49,29 @@ class Merger {
   }
   flush(ctx, label) {
     const out = [];
+    // On phones, every flat-coloured landmark material collapses into ONE vertex-coloured
+    // mesh (~24 draw calls saved). Textured materials — signs, clocks, panels — stay put.
+    if (ctx.quality.mobile) {
+      const flat = [...this.buckets].filter(([m]) => !m.map && !m.emissiveMap && !m.transparent && m.isMeshLambertMaterial);
+      if (flat.length > 1) {
+        const merged = { pos: [], nor: [], uv: [], col: [], n: 0 };
+        for (const [m, b] of flat) {
+          const r = m.color.r, g = m.color.g, bl = m.color.b;
+          const c = new Float32Array(b.n * 3);
+          for (let i = 0; i < b.n; i++) { c[i * 3] = r; c[i * 3 + 1] = g; c[i * 3 + 2] = bl; }
+          merged.pos.push(...b.pos); merged.nor.push(...b.nor); merged.uv.push(...b.uv); merged.col.push(c); merged.n += b.n;
+          this.buckets.delete(m);
+        }
+        this.buckets.set(Merger.flatMat || (Merger.flatMat = Object.assign(new THREE.MeshLambertMaterial({ vertexColors: true }), { name: 'flat' })), merged);
+      }
+    }
     for (const [mat, b] of this.buckets) {
       const cat = (arrs, stride) => { const a = new Float32Array(b.n * stride); let o = 0; for (const s of arrs) { a.set(s, o); o += s.length; } return a; };
       const g = new THREE.BufferGeometry();
       g.setAttribute('position', new THREE.BufferAttribute(cat(b.pos, 3), 3));
       g.setAttribute('normal', new THREE.BufferAttribute(cat(b.nor, 3), 3));
       g.setAttribute('uv', new THREE.BufferAttribute(cat(b.uv, 2), 2));
+      if (b.col) g.setAttribute('color', new THREE.BufferAttribute(cat(b.col, 3), 3));
       g.computeBoundingSphere();
       const mesh = new THREE.Mesh(g, mat);
       mesh.name = 'landmarks:' + (mat.name || 'mat');

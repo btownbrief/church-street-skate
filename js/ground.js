@@ -146,9 +146,10 @@ export function buildGround(ctx) {
   buildLake(scene);
 
   // --- 4. one mesh per material --------------------------------------------
-  const add = (tris, mat, shadow) => {
+  const add = (tris, mat, shadow, label) => {
     if (!tris.tris) return null;
     const m = new THREE.Mesh(tris.geo(), mat);
+    m.name = 'ground:' + (label || 'part');
     m.receiveShadow = true; m.castShadow = !!shadow && !mobile;
     m.matrixAutoUpdate = false; m.updateMatrix();
     scene.add(m); return m;
@@ -156,21 +157,21 @@ export function buildGround(ctx) {
   const lam = (o) => new THREE.MeshLambertMaterial({ vertexColors: true, ...o });
   const off = (f) => ({ polygonOffset: true, polygonOffsetFactor: f, polygonOffsetUnits: f });
 
-  add(B.asphalt, lam(off(-1)));
-  add(B.brick, lam({ map: brickTexture(), ...off(-1) }));
-  add(B.dirt, lam(off(-1)));
+  add(B.asphalt, lam(off(-1)), false, 'asphalt');
+  add(B.brick, lam({ map: brickTexture(), ...off(-1) }), false, 'brick');
+  add(B.dirt, lam(off(-1)), false, 'dirt');
   // stone (curb faces, stair risers, wall + hedge sides, fence posts) and hedges are thin
   // plates seen from either side
-  add(B.green, lam({ side: THREE.DoubleSide, ...off(-1) }));
-  add(B.concrete, lam(off(-2)));
-  add(B.stone, lam({ side: THREE.DoubleSide, ...off(-3) }), true);
-  add(B.paint, lam(off(-5)));
-  add(B.water, lam({ ...off(-2) }));
+  add(B.green, lam({ side: THREE.DoubleSide, ...off(-1) }), false, 'green');
+  add(B.concrete, lam(off(-2)), false, 'concrete');
+  add(B.stone, lam({ side: THREE.DoubleSide, ...off(-3) }), true, 'stone');
+  add(B.paint, lam(off(-5)), false, 'paint');
+  add(B.water, lam({ ...off(-2) }), false, 'water');
   if (B.sheer.tris) {
     const m = new THREE.Mesh(B.sheer.geo(), new THREE.MeshLambertMaterial({
       vertexColors: true, transparent: true, opacity: 0.3, side: THREE.DoubleSide, depthWrite: false,
     }));
-    m.matrixAutoUpdate = false; m.updateMatrix(); scene.add(m);
+    m.name = 'ground:sheer'; m.matrixAutoUpdate = false; m.updateMatrix(); scene.add(m);
   }
 
   ctx.churchStreetPts = churchPts;
@@ -244,6 +245,7 @@ function buildTerrain(scene, cover, nx, nz, gs, LX0, LZ0, H, rnd, mobile) {
     g.setAttribute('color', new THREE.BufferAttribute(col, 3));
     g.setIndex(idx); g.computeBoundingSphere();
     const m = new THREE.Mesh(g, mat);
+    m.name = 'ground:terrain';
     m.receiveShadow = true; m.matrixAutoUpdate = false; m.updateMatrix();
     scene.add(m);
   }
@@ -272,6 +274,7 @@ function buildSkirt(scene, nx, nz, gs, LX0, LZ0, H) {
   };
   corner(0, 0, -OUT, -OUT); corner(nx, 0, OUT, -OUT); corner(0, nz, -OUT, OUT); corner(nx, nz, OUT, OUT);
   const m = new THREE.Mesh(t.geo(), new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+  m.name = 'ground:skirt';
   m.matrixAutoUpdate = false; m.updateMatrix(); scene.add(m);
 }
 
@@ -315,6 +318,7 @@ function normalsOf(path) {
 
 function buildStreets(ctx, B, gridH, near, rnd) {
   const { WORLD, collide, play } = ctx;
+  const mobile = !!ctx.quality.mobile;
   const roads = (WORLD.roads || []).filter(r => CAR_KINDS.includes(r.kind) && r.pts && r.pts.length > 1);
   const drawn = roads.filter(r => r.pts.some(p => near(p[0], p[1], 190)));
 
@@ -360,7 +364,7 @@ function buildStreets(ctx, B, gridH, near, rnd) {
 
   for (const r of drawn) {
     const w = roadWidth(r), hw = w / 2;
-    const path = resample(r.pts, 5);
+    const path = resample(r.pts, mobile ? 8 : 5);   // phones: 40% fewer road/kerb/walk quads
     const nrm = normalsOf(path);
     const jitter = ((hashStr(String(r.id)) & 31) / 31) * 0.014;
     const layer = { primary: 0.052, secondary: 0.048, unclassified: 0.046, tertiary: 0.042, residential: 0.038, service: 0.03 }[r.kind] + jitter;
@@ -645,11 +649,13 @@ function buildMall(ctx, B, gridH, near) {
   }
 
   // the granite meridian line — a continuous inlay down the exact centreline
-  const GRAN = C(0xa9a69c);
+  // 0.30 m of grey granite, not a painted white stripe: at 0.38 m and near-white it read
+  // like a road marking down the middle of the bricks.
+  const GRAN = C(0x8d8a80);
   for (let i = 0; i < line.length - 1; i++) {
     const a = line[i], b = line[i + 1], na = nrm[i], nb = nrm[i + 1];
     if (crossDist(a[0], a[1]) < 7) continue;
-    const ya = gridH(a[0], a[1]) + 0.035, yb = gridH(b[0], b[1]) + 0.035, h = 0.19;
+    const ya = gridH(a[0], a[1]) + 0.032, yb = gridH(b[0], b[1]) + 0.032, h = 0.15;
     B.stone.quad([a[0] + na[0] * h, ya, a[1] + na[1] * h], [b[0] + nb[0] * h, yb, b[1] + nb[1] * h],
       [b[0] - nb[0] * h, yb, b[1] - nb[1] * h], [a[0] - na[0] * h, ya, a[1] - na[1] * h], GRAN);
   }
@@ -1011,6 +1017,7 @@ function buildLake(scene) {
   const g = new THREE.PlaneGeometry(9000, 9000, 1, 1);
   g.rotateX(-Math.PI / 2);
   const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: 0x5d7f9a, emissive: 0x14202b }));
+  m.name = 'ground:lake';
   m.position.set(-4200, LAKE_Y, -140);
   m.receiveShadow = false; m.matrixAutoUpdate = false; m.updateMatrix();
   scene.add(m);

@@ -1,5 +1,6 @@
 // Headless playtest hooks (window.__*), used by scripts/shot.mjs. Kept out of main.js so the
 // game loop stays readable. Nothing here runs unless a test calls it.
+import * as THREE from '../vendor/three.module.min.js';
 import { fwd, yawOf, angleDiff, clamp } from './util.js';
 
 export function installDev(api) {
@@ -83,18 +84,34 @@ export function installDev(api) {
     return out;
   };
 
-  // triangle + draw-call budget, grouped by mesh name (builders name their meshes 'city:…')
+  // triangle budget: totals by mesh name plus the biggest individual meshes
   window.__meshes = () => {
-    const g = new Map(); let tot = 0;
+    const g = new Map(); let tot = 0; const all = [];
     scene.traverse((o) => {
       if (!o.isMesh && !o.isInstancedMesh) return;
       const idx = o.geometry.index, pos = o.geometry.attributes.position;
       let tris = (idx ? idx.count : pos ? pos.count : 0) / 3;
       if (o.isInstancedMesh) tris *= o.count;
-      const k = o.name || (o.material && o.material.name) || '(unnamed)';
+      tris = Math.round(tris);
+      const k = o.name || '(unnamed)';
       const e = g.get(k) || { tris: 0, n: 0 }; e.tris += tris; e.n++; g.set(k, e); tot += tris;
+      all.push({ n: o.name || '', m: (o.material && (o.material.name || o.material.type)) || '', tris, inst: o.isInstancedMesh ? o.count : 0, vis: o.visible, geo: o.geometry.type, pos: [Math.round(o.position.x), Math.round(o.position.y), Math.round(o.position.z)], parent: (o.parent && o.parent.name) || (o.parent && o.parent.type) || '' });
     });
-    return { total: Math.round(tot), byName: [...g].map(([k, v]) => [k, Math.round(v.tris), v.n]).sort((a, b) => b[1] - a[1]).slice(0, 40) };
+    return {
+      total: tot,
+      byName: [...g].map(([k, v]) => [k, v.tris, v.n]).sort((a, b) => b[1] - a[1]),
+      biggest: all.sort((a, b) => b.tris - a.tris).slice(0, 24), meshCount: all.length, unnamed: all.filter(a => !a.n),
+    };
+  };
+  // what mesh is at this world point? (raycast straight down from 40 m up)
+  const _rc = new THREE.Raycaster();
+  window.__pick = (x, z, fromY = 40) => {
+    _rc.set(new THREE.Vector3(x, fromY, z), new THREE.Vector3(0, -1, 0));
+    _rc.far = 200; _rc.camera = camera;   // Sprites need a camera on the raycaster
+    return _rc.intersectObjects(scene.children, true).slice(0, 6).map((h) => ({
+      name: h.object.name || '(unnamed)', mat: (h.object.material && (h.object.material.name || h.object.material.type)) || '',
+      y: +h.point.y.toFixed(3), color: h.object.material && h.object.material.color ? '#' + h.object.material.color.getHexString() : null,
+    }));
   };
   window.__topdown = (x, z, h = 80) => {
     api.setRunning(false);
