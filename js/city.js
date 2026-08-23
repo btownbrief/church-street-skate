@@ -519,7 +519,7 @@ export function buildCity(ctx) {
       capPolygon(trim, pts, top - 0.22, mix(0x4a4a46, 0xffffff, ((hh >>> 5) & 7) / 42));
       // Roof edge detail costs 4 tris per wall segment across 1,100 buildings. On a phone
       // only the buildings you actually skate past get it; the rest just get the roof cap.
-      const roofDetail = !mobile || dCore < 140;
+      const roofDetail = !mobile || dCore < 95;
       if (roofDetail) for (let i = 0; i < pts.length; i++) {
         const a = pts[i], q = pts[(i + 1) % pts.length];
         const dx = q[0] - a[0], dz = q[1] - a[1]; const L = Math.hypot(dx, dz); if (L < 0.05) continue;

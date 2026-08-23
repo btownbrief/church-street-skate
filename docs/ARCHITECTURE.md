@@ -109,9 +109,11 @@ corner", "Bank St planter", "Fountain gap").
 - Fog + lake backdrop hide the world edge. Draw-call budget ≈ 150 desktop, ≈ 110 phone.
 - `main.js` measures FPS and drops tiers (shadows → pixel ratio → NPC count).
 - Mobile cuts, all gated on `ctx.quality.mobile`: half-resolution terrain lattice, 8 m road
-  resample, roof-edge detail only within 140 m of Church St, `SEG()` coarsens every round
-  primitive in `props.js`, and every flat-coloured landmark material merges into one
-  vertex-coloured mesh. Measured on an iPhone 13 profile: ~99 meshes, ~295k triangles.
+  resample, no kerb top strip, half the lane paint, roof-edge detail only within 95 m of
+  Church St, `SEG()` coarsens every round primitive in `props.js`, 46 parked cars instead
+  of 86, and every flat-coloured landmark material merges into one vertex-coloured mesh.
+  Measured on an iPhone 13 landscape profile: **99 draw calls, ~276k triangles** (from 139
+  and 377k). Desktop: **120 draw calls, ~474k triangles**.
 
 ## Headless playtesting
 

@@ -21,7 +21,7 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: !mobile, powerPref
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, mobile ? 1.5 : 2));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
-const quality = { tier: mobile ? 1 : 2, shadows: !mobile, npcs: mobile ? 0.6 : 1, traffic: mobile ? 0.7 : 1, mobile };
+const quality = { tier: mobile ? 1 : 2, shadows: !mobile, npcs: mobile ? 0.5 : 1, traffic: mobile ? 0.7 : 1, mobile };
 renderer.shadowMap.enabled = quality.shadows; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const scene = new THREE.Scene();

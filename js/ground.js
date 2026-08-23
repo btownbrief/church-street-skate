@@ -395,7 +395,7 @@ function buildStreets(ctx, B, gridH, near, rnd) {
       const mx = (a[0] + b[0]) / 2, mz = (a[1] + b[1]) / 2, my = (ya + yb) / 2 + 0.004;
       const mn = [(na[0] + nb[0]) / 2, (na[1] + nb[1]) / 2];
       const tx = (b[0] - a[0]) / 5, tz = (b[1] - a[1]) / 5;
-      if (r.kind !== 'service' && (i % 2 === 0) && !nearNode(mx, mz, 9)) {
+      if (r.kind !== 'service' && (i % (mobile ? 4 : 2) === 0) && !nearNode(mx, mz, 9)) {
         if (two) dash(B.paint, mx, mz, my, tx, tz, mn, 0, 0.16, YELL);
         if (lanes >= 3) { const off = w / 4; dash(B.paint, mx, mz, my, tx, tz, mn, off, 0.13, WHITE); dash(B.paint, mx, mz, my, tx, tz, mn, -off, 0.13, WHITE); }
       }
@@ -416,12 +416,13 @@ function buildStreets(ctx, B, gridH, near, rnd) {
         const P = (pt, nn, o, y) => [pt[0] + nn[0] * o * sg, y, pt[1] + nn[1] * o * sg];
         // curb face (vertical)
         B.stone.quad(P(a, na, o0, ya - 0.02), P(a, na, o0, wa), P(b, nb, o0, wb), P(b, nb, o0, yb - 0.02), C(0x77746d));
-        // curb top strip
-        B.stone.quad(P(a, na, o0, wa), P(a, na, o1, wa), P(b, nb, o1, wb), P(b, nb, o0, wb), CURB);
+        // curb top strip — on a phone the walk just runs to the kerb face instead
+        if (!mobile) B.stone.quad(P(a, na, o0, wa), P(a, na, o1, wa), P(b, nb, o1, wb), P(b, nb, o0, wb), CURB);
         // concrete band
+        const oW = mobile ? o0 : o1;
         const tone2 = 0.94 + 0.12 * (((hashStr(r.id + ':w' + i + s) >>> 4) & 255) / 255);
         const wc = [WALK[0] * tone2, WALK[1] * tone2, WALK[2] * tone2];
-        B.concrete.quad(P(a, na, o1, wa + 0.004), P(a, na, o2, wa + 0.004), P(b, nb, o2, wb + 0.004), P(b, nb, o1, wb + 0.004), wc);
+        B.concrete.quad(P(a, na, oW, wa + 0.004), P(a, na, o2, wa + 0.004), P(b, nb, o2, wb + 0.004), P(b, nb, oW, wb + 0.004), wc);
         if (inPlay) {
           // A sloped ramp, not a flat box: on the hill streets a flat slab per 5 m segment
           // left a 25 cm step at every joint — taller than the skater's stepUp, so riding
