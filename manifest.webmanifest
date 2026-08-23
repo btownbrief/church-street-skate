@@ -1,0 +1,11 @@
+{
+  "name": "Church Street Skate",
+  "short_name": "Church St Skate",
+  "description": "Skate downtown Burlington, Vermont in your browser.",
+  "start_url": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#1a2433",
+  "theme_color": "#1a2433",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }, { "src": "icon-180.png", "sizes": "180x180", "type": "image/png" }]
+}

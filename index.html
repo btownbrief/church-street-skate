@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Church Street Skate — Burlington, Vermont</title>
+<meta name="description" content="Skate downtown Burlington, Vermont: ollie the City Hall steps, grind the Church Street planters, bomb College Street toward the lake. A 3D open-world skateboarding game in the browser.">
+<meta name="theme-color" content="#1a2433">
+<meta property="og:title" content="Church Street Skate">
+<meta property="og:description" content="Skate an accurate downtown Burlington, VT in your browser — Church Street Marketplace, City Hall Park, the hills down to the lake.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud"></div>
+<div id="touch" aria-hidden="true">
+  <div id="stick-zone"><div id="stick-base"><div id="stick-knob"></div></div></div>
+  <div id="buttons">
+    <button class="tb" id="b-grab">GRAB</button>
+    <button class="tb" id="b-shove">SHOVE</button>
+    <button class="tb" id="b-flip">FLIP</button>
+    <button class="tb big" id="b-ollie">OLLIE</button>
+  </div>
+</div>
+<div id="screen-title" class="screen on">
+  <div class="card">
+    <div class="eyebrow">Burlington, Vermont</div>
+    <h1>Church Street<br>Skate</h1>
+    <p class="sub">Four blocks of brick, the hill down to the lake, City Hall steps, the planters everybody grinds anyway.</p>
+    <button id="btn-play" class="primary">Skate</button>
+    <div id="how" class="how"></div>
+    <div id="loading" class="loading">Building Burlington…</div>
+    <div class="fine">Map data © OpenStreetMap contributors · Elevation USGS 3DEP · Original low-poly art</div>
+  </div>
+</div>
+<div id="screen-pause" class="screen">
+  <div class="card small">
+    <h2>Paused</h2>
+    <div id="stats"></div>
+    <div class="row"><button id="btn-resume" class="primary">Resume</button><button id="btn-respawn">Back to Church St</button><button id="btn-mute">Sound: on</button></div>
+    <div id="spots-list" class="spots"></div>
+  </div>
+</div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

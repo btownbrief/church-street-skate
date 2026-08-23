@@ -1,0 +1,281 @@
+church-street-skate - world.js build summary
+==============================================================
+generated : 2026-08-23 10:04:04 EDT
+world.js  : 1,080,330 bytes (1.08 MB)
+origin    : OSM node 204493047 @ 44.4770964, -73.2125662  (ground 63.44 m ASL = local y 0)
+local bbox: x -690.2 .. 541.8 m east, z -717.2 .. 460.4 m south
+terrain   : 257 x 246 @ 5.0 m (63,222 samples)  source: USGS 3DEP ImageServer exportImage (F32 GeoTIFF)
+
+COUNTS
+--------------------------------------------------------------
+  roads          1145
+  areas           125
+  buildings      1158
+  pois            352
+  props           677
+  lines            67
+  church ctr       29 points
+
+roads by highway kind
+    footway                   719
+    service                   214
+    secondary                  44
+    residential                37
+    primary                    30
+    tertiary                   28
+    steps                      26
+    unclassified               20
+    cycleway                   10
+    pedestrian                  9
+    construction                8
+
+areas by kind
+    amenity:parking            46
+    landuse:residential        15
+    landuse:commercial         15
+    landuse:retail             10
+    highway:pedestrian          6
+    landuse:religious           5
+    leisure:park                4
+    leisure:playground          3
+    landuse:construction        3
+    landuse:grass               3
+    amenity:school              2
+    natural:water               2
+    landuse:cemetery            1
+    natural:wood                1
+    place:neighbourhood         1
+    leisure:garden              1
+    landuse:education           1
+    landuse:recreation_ground    1
+    landuse:brownfield          1
+    leisure:common              1
+    landuse:industrial          1
+    leisure:marina              1
+    amenity:college             1
+
+props by kind
+    highway:crossing          250
+    barrier:kerb              188
+    amenity:bicycle_parking    59
+    barrier:bollard            44
+    highway:traffic_signals    25
+    highway:bus_stop           23
+    barrier:gate               16
+    amenity:bench              13
+    amenity:parking_entrance   10
+    historic:memorial           8
+    amenity:charging_station    8
+    amenity:vending_machine     7
+    tourism:information         3
+    amenity:atm                 3
+    man_made:flagpole           3
+    amenity:waste_basket        3
+    emergency:fire_hydrant      3
+    tourism:artwork             2
+    advertising:board           2
+    amenity:drinking_water      2
+    leisure:picnic_table        2
+    amenity:post_box            1
+    highway:elevator            1
+    emergency:phone             1
+
+lines by kind
+    steps                      26
+    barrier:fence              24
+    barrier:wall                8
+    man_made:pier               4
+    barrier:hedge               3
+    barrier:bollard             1
+    barrier:retaining_wall      1
+
+pois by kind (top 40)
+    amenity:restaurant         44
+    shop:clothes               28
+    amenity:bar                20
+    shop:hairdresser           14
+    amenity:fast_food          12
+    amenity:bank               11
+    amenity:cafe               11
+    shop:jewelry                9
+    amenity:parking             8
+    shop:gift                   8
+    amenity:social_facility     8
+    amenity:place_of_worship    7
+    historic:memorial           7
+    amenity:pub                 6
+    tourism:hotel               6
+    shop:cannabis               6
+    leisure:park                5
+    shop:tattoo                 5
+    office:association          4
+    office:government           4
+    office:company              4
+    amenity:ice_cream           4
+    shop:beauty                 4
+    shop:bicycle                3
+    shop:convenience            3
+    amenity:fuel                3
+    amenity:dentist             3
+    office:lawyer               3
+    leisure:fitness_centre      3
+    shop:bakery                 3
+    amenity:school              3
+    tourism:information         3
+    shop:confectionery          3
+    shop:alcohol                3
+    shop:houseware              3
+    amenity:theatre             2
+    amenity:courthouse          2
+    shop:car_repair             2
+    shop:skate                  2
+    shop:copyshop               2
+
+buildings on Church St mall: 52 (E 30 / W 22)
+buildings with a name      : 96
+
+ELEVATION SANITY TABLE (USGS 3DEP, metres)
+--------------------------------------------------------------
+intersection            x (E)    z (S)   abs ASL    rel y
+Church & Pearl          -17.2   -372.4      69.5      6.0
+Church & Cherry         -11.3   -245.7      68.0      4.6
+Church & Bank            -5.6   -122.8      66.9      3.4
+Church & College          0.0      0.0      63.4      0.0
+Church & Main             6.2    128.2      59.9     -3.6
+St Paul & Main         -114.2    135.0      56.7     -6.8
+Battery & Main         -485.5    153.3      38.4    -25.0
+S Winooski & Main       125.2    122.7      58.5     -4.9
+Pine & College         -244.0     12.8      56.4     -7.0
+
+NAMED POIs ON THE CHURCH STREET MALL (Pearl -> Main)
+--------------------------------------------------------------
+east side first, then west side; each list ordered north -> south.
+x = metres east of Church&College, z = metres south.
+
+EAST SIDE  (53)
+  name                                kind                         x       z  building
+  Kru Coffee                          amenity:cafe              -2.3  -357.9  w614527246
+  Top Of The Block Sandwich Shop      amenity:fast_food         -1.7  -345.2  w614527246
+  E.B. Strong's                       amenity:restaurant        -0.8  -327.8  w957664420
+  Crow Bookshop                       shop:books                -0.4  -318.3  w957664421
+  Halvorson's                         amenity:restaurant        -0.1  -311.0  w957664421
+  Smugglers' Notch Distillery         shop:alcohol               0.7  -287.8  w957664423
+  Bickford USA                        shop:clothes               1.0  -284.2  w957664423
+  Posh Nails                          shop:beauty                1.3  -279.2  w957664424
+  Wild Lark                           shop:florist               1.5  -272.8  w957664425
+  Silver Threads Tailoring            shop:tailor                8.4  -271.0  w957664425
+  Public Vintage                      shop:gift                  1.7  -267.9  w957664425
+  Daydream Art Supply                 shop:craft                 8.7  -265.6  w957664426
+  Ben & Jerry's                       amenity:ice_cream          2.4  -260.7  w957664426
+  Whizbangs                           shop:confectionery         4.1  -232.8  w959835873
+  Pokéworks                           amenity:fast_food          4.4  -227.4  w959835873
+  Catamount Store                     shop:clothes               5.0  -214.3  w959835877
+  Designers’ Circle & Vintage Jeweler shop:jewelry               5.2  -199.9  w959835876
+  Homeport                            shop:houseware             5.4  -193.3  w959835876
+  Banana Republic                     shop:clothes               6.0  -181.5  w959835875
+  Whim Boutique                       shop:clothes               6.5  -168.1  w959835872
+  Flora & Fauna                       shop:gift                 16.5  -156.4  w959835872
+  Vermont Flannel                     shop:clothes               7.6  -150.5  w959835872
+  Vermont Teddy Bear                  shop:gift                  7.8  -146.1  w959835872
+  Karlise Fine Jewelers               shop:jewelry               8.3  -138.1  w959835872
+  Always Full Market                  shop:grocery              22.3  -111.5  w961730781
+  Integrative Dental Care             amenity:dentist           11.2  -108.3  w961730782
+  Insomnia cookies                    shop:pastry                8.4  -102.6  w961730779
+  Saratoga Olive Oil Company          shop:food                  8.6   -95.6  w961730780
+  Asiana Noodle Shop                  amenity:restaurant        13.6   -93.5  w961730780
+  Free People                         shop:clothes               9.1   -88.4  w961730778
+  Cappadocia Bistro                   amenity:restaurant         9.4   -82.4  w961730778
+  Harbour Thread                      shop:clothes               9.8   -75.5  w961730778
+  FP Movement                         shop:clothes              10.2   -67.7  w961730777
+  Soulshine Power Yoga                leisure:fitness_centr     17.1   -67.7  w961730777
+  Bao Tak Fai                         amenity:dojo              17.1   -65.4  w961730777
+  Kiss the Cook                       shop:general              10.3   -59.6  w961730776
+  Amberli                             shop:gift                 10.9   -48.5  w961730775
+  Rigo Brothers Tailors               shop:tailor               16.7   -42.4  w961730767
+  Tradewinds                          shop:jewelry              11.6   -38.4  w961730767
+  Lippa's                             shop:jewelry              12.1   -29.1  w961730768
+  Northfield Savings Bank             amenity:bank              12.7   -12.5  w961730766
+  Sabah's House                       amenity:fast_food         11.2    -6.2  
+  Sweetwaters                         amenity:restaurant        15.4    18.7  w945624897
+  Global Pathways                     shop:jewelry              13.7    35.8  w945624900
+  Maven                               shop:skate                13.9    39.5  w945624900
+  True 802 Cannabis                   shop:cannabis             21.0    44.6  w945624901
+  Akes' Place                         amenity:bar               14.4    45.1  w945624901
+  Red Square                          amenity:bar               16.0    59.7  w945944099
+  Float On Cannabis Company           shop:cannabis             16.0    64.0  w945944099
+  Gaku Ramen                          amenity:restaurant        15.7    77.5  w945944102
+  Laliguras                           amenity:restaurant        16.1    85.8  w945944098
+  The Altar                           shop:tattoo               16.7    98.0  w945944097
+  Honey Road                          amenity:restaurant        17.5   109.9  w945944097
+
+WEST SIDE  (40)
+  name                                kind                         x       z  building
+  Chase                               amenity:bank             -30.9  -355.0  w261330850
+  Brandy Melville                     shop:clothes             -30.0  -325.9  w261330849
+  Tina's Home Designs                 shop:interior_decorat    -29.7  -314.1  w261330851
+  Underground Closet                  shop:clothes             -29.6  -308.7  w261330851
+  The Prik                            shop:tattoo              -29.0  -301.1  w261330853
+  Urban Outfitters                    shop:clothes             -28.9  -290.5  w957623098
+  Lululemon                           shop:clothes             -28.5  -278.0  w28160080
+  Fear and Cloathing                  shop:clothes             -28.2  -269.8  w28160080
+  CVS Pharmacy                        shop:chemist             -28.3  -261.0  w28160080
+  Outdoor Gear Exchange               shop:outdoor             -29.7  -218.9  w105822104
+  Zinnia                              shop:jewelry             -21.0  -175.3  w231279069
+  Hatley                              shop:clothes             -20.7  -169.3  w231279069
+  Bertha Church                       shop:clothes             -20.5  -162.6  w237060114
+  Pepper Palace                       shop:hot_sauce           -20.1  -156.7  w237060114
+  Lake Champlain Chocolates           shop:confectionery       -20.0  -150.8  w237060114
+  Ken's Pizza & Pub                   amenity:pub              -19.3  -142.5  w237060115
+  Asian Therapy                       shop:massage             -26.1  -141.9  w237060115
+  Moose Tattoos                       shop:tattoo              -25.8  -137.1  w237060115
+  Catmount Tobacco & Convenience      shop:convenience         -18.8  -134.7  w237060115
+  Ken's Pizza & Pub Take-Out          amenity:fast_food        -33.1  -134.3  w237060115
+  Ecco                                shop:shoes               -18.4  -106.7  w28160078
+  Pascolo Ristorante                  amenity:restaurant       -18.0   -99.9  w28160078
+  Frog Hollow                         shop:art                 -17.7   -93.1  w28160078
+  Golden Hour                         shop:gift                -17.3   -86.4  w28160078
+  Phoenix Books                       shop:books               -17.0   -79.6  w28160078
+  Burlington Bagel Bakery             amenity:fast_food        -16.6   -71.9  w957017838
+  Garcia's Tobacco Shop               shop:tobacco             -16.2   -64.9  w957017837
+  Little Istanbul                     shop:gift                -15.8   -57.9  w957017834
+  4T2D                                shop:clothes             -15.5   -52.4  w957017834
+  Church Street Tavern                amenity:restaurant       -15.1   -44.4  w957017835
+  The Optical Center                  shop:optician            -14.6   -34.6  w957017833
+  Danforth                            shop:houseware           -14.1   -25.2  w28160090
+  Leunig's Bistro                     amenity:restaurant       -13.4   -12.1  w28160090
+  MK Clothing                         shop:clothes             -13.2    15.7  w28160071
+  Rí Rá Irish Pub                     amenity:pub              -12.8    25.2  w938638120
+  Von Bargen's                        shop:jewelry             -12.5    41.2  w938638121
+  BCA Center                          tourism:gallery          -13.0    53.7  w938638122
+  Ethan Allen Engine company No. 4    historic:heritage        -21.2    54.4  w938638122
+  Burlington City Hall                amenity:townhall         -23.5    89.9  w28160084
+  Church Street Marketplace           historic:memorial         -7.5   121.2  
+
+
+CHURCH STREET CROSSINGS (local x, z)
+  Pearl         -17.2   -372.4
+  Cherry        -11.3   -245.7
+  Bank           -5.6   -122.8
+  College         0.0      0.0
+  Main            6.2    128.2
+
+KNOWN GAPS / NOTES
+--------------------------------------------------------------
+  - OSM has ZERO natural:tree nodes in this bbox - the mall's double row of street trees must be placed by hand
+  - OSM has ZERO highway:street_lamp nodes in this bbox - the mall's lamp posts must be placed by hand
+  - OSM has ZERO man_made:planter nodes in this bbox - the mall's concrete planters must be placed by hand
+  - OSM has ZERO amenity:fountain nodes in this bbox - fountains must be placed by hand
+  - only 13 amenity=bench nodes in the whole bbox; the real Marketplace has far more
+  - 65 of 1158 buildings have neither height nor building:levels in OSM and use the 7 m / 8 m fallback (hsrc:'default'); 1088 have a surveyed height
+  -     guessed height: Butler Hall (w650301246) baked at 7 m
+  -     guessed height: Ethan Allen Engine company No. 4 (w938638122) baked at 7 m
+  -     guessed height: Stratos Condominiums (w1012814037) baked at 7 m
+  -     guessed height: The Nest (w1455369825) baked at 7 m
+  - 41 of the 52 Church St mall buildings have no name tag (their storefronts are tagged as separate POI nodes instead)
+  - active construction site 'Burlington Square Construction Site' at x=-202 z=-192 - footprints here may not match the street today
+  - active construction site 'unnamed' at x=253 z=-66 - footprints here may not match the street today
+  - active construction site 'unnamed' at x=-258 z=-123 - footprints here may not match the street today
+
+Attribution required when shipping this data:
+  © OpenStreetMap contributors (ODbL)
+  Elevation: USGS 3DEP
