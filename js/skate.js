@@ -134,7 +134,7 @@ export class Skater {
     // rolling friction (more on grass/brick)
     const fr = CFG.rollFriction * (g.kind === 'grass' ? 6 : g.kind === 'brick' ? 1.3 : 1);
     const s3 = v.length(); if (s3 > 0) v.multiplyScalar(Math.max(0, s3 - fr * dt) / s3);
-    if (s3 > 18) v.multiplyScalar(18 / s3);
+    if (s3 > 28) v.multiplyScalar(28 / s3);
     // move
     p.x += v.x * dt; p.z += v.z * dt;
     this.session.dist += s3 * dt;

@@ -21,7 +21,7 @@ export class FollowCamera {
     if (sk.state === 'grind') target = yawOf(sk.vel.x, sk.vel.z);
     const rate = sk.state === 'air' ? 1.8 : sk.state === 'bail' ? 0.8 : clamp(2 + sp * 0.35, 2, 6);
     this.yaw = this.first ? target : dampAngle(this.yaw, target, rate, dt);
-    const dist = (this.mode === 1 ? 3.6 : this.mode === 2 ? 7.5 : CFG.camDist) + clamp(sp - 6, 0, 6) * 0.18;
+    const dist = (this.mode === 1 ? 3.6 : this.mode === 2 ? 7.5 : CFG.camDist) + clamp(sp - 6, 0, 14) * 0.22;
     const height = (this.mode === 2 ? 4.2 : CFG.camHeight) + (sk.state === 'air' ? 0.3 : 0);
     fwd(this.yaw, _f);
     let px = sk.pos.x - _f.x * dist, pz = sk.pos.z - _f.z * dist;
@@ -49,7 +49,7 @@ export class FollowCamera {
     this.cam.lookAt(this.look);
     // subtle roll with lean
     this.cam.rotateZ(-sk.lean * 0.04);
-    const fov = CFG.camFov + clamp(sp - 5, 0, 10) * 1.4; this.fov = damp(this.fov, fov, 4, dt);
+    const fov = CFG.camFov + clamp(sp - 5, 0, 18) * 1.2; this.fov = damp(this.fov, fov, 4, dt);
     if (Math.abs(this.cam.fov - this.fov) > 0.05) { this.cam.fov = this.fov; this.cam.updateProjectionMatrix(); }
     this.first = false;
   }
