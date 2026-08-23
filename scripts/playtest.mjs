@@ -193,7 +193,20 @@ tests.tricks = async () => {
   say('OLLIE tap height (m):', h2);
   // manual
   await tp(-11, -60, Math.PI, 0); await sim(3, ['ArrowUp']);
-  const man = await ev(() => { window.__sim(0.3, ['Space']); for (let i = 0; i < 30; i++) window.__sim(1 / 60); let sawManual = false; for (let i = 0; i < 240; i++) { window.__sim(1 / 60, ['ShiftLeft']); if (window.__dbg().state === 'manual') sawManual = true; } return { sawManual, end: window.__dbg() }; });
+  const man = await ev(() => {
+    window.__sim(0.3, ['Space']);
+    for (let i = 0; i < 30; i++) window.__sim(1 / 60);
+    window.__press('ShiftLeft');                       // held across the landing, as a player would
+    let sawManual = false, metres = 0, last = window.__dbg().pos;
+    for (let i = 0; i < 400; i++) {
+      window.__sim(1 / 60);
+      const d = window.__dbg();
+      if (d.state === 'manual') { sawManual = true; metres += Math.hypot(d.pos[0] - last[0], d.pos[2] - last[2]); }
+      last = d.pos;
+    }
+    window.__release('ShiftLeft');
+    return { sawManual, metres: +metres.toFixed(1), end: window.__dbg().state };
+  });
   say('MANUAL through a landing:', JSON.stringify(man));
 };
 

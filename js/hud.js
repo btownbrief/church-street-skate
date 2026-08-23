@@ -39,7 +39,6 @@ export class Hud {
       case 'bank': this.popup(`+${ev.total.toLocaleString()}`, 'bank', 50, 30); if (ev.spot) this.callout(ev.spot, `spot bonus`); break;
       case 'bail': if (ev.lost > 0) this.popup(`BAIL  −${ev.lost.toLocaleString()}`, 'bail', 50, 34); else this.popup('BAIL', 'bail', 50, 34); break;
       case 'spotFirst': this.callout(`NEW SPOT: ${ev.name}`, `+${ev.bonus} · ${sk.spotsHit.size}/${sk.spots.length} Burlington spots`); break;
-      case 'grindStart': break;
       case 'land': if (ev.sketchy) this.popup('sketchy', 'sk', 50, 44); break;
     }
   }

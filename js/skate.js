@@ -35,7 +35,10 @@ export class Skater {
     this.hitboxR = CFG.skaterRadius;
   }
 
-  emit(type, data) { this.events.push(Object.assign({ type, t: this.t }, data || {})); }
+  // NB: `type` is written last on purpose — a payload key of the same name used to clobber
+  // it (grindStart was arriving as '50-50'), so every listener that switched on ev.type
+  // silently ignored the event.
+  emit(type, data) { const e = Object.assign({ t: this.t }, data || {}); e.type = type; this.events.push(e); }
 
   respawn(x, y, z, yaw) {
     this.pos.set(x, y, z); this.vel.set(0, 0, 0); this.yaw = yaw ?? this.yaw; this.state = 'ride';
@@ -278,7 +281,7 @@ export class Skater {
     this.grind = { edge, t: e.t, dir, speed, type: (type === '50-50' ? '' : fsbs) + type, time: 0, balance: 0, seed: Math.random() * 10, targetYaw: perp ? edgeYaw + Math.PI / 2 * (angleDiff(this.yaw, edgeYaw) > 0 ? 1 : -1) : (d < Math.PI / 4 ? edgeYaw : edgeYaw + Math.PI), perp };
     this.pos.set(e.px, e.py, e.pz); v.set(dx * dir * speed, 0, dz * dir * speed); this.yawVel = 0; this.spinAccum = 0;
     this.state = 'grind'; this.lastEdge = edge; this.flip = null; this.shoveOff = 0; this.grab = null;
-    this.emit('grindStart', { type: this.grind.type, name: edge.name, kind: edge.kind });
+    this.emit('grindStart', { trick: this.grind.type, name: edge.name, kind: edge.kind });
     // count the spin that got us here
   }
   stepGrind(dt, inp, ev) {
