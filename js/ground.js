@@ -18,6 +18,27 @@ const GREEN_KINDS = ['leisure:park', 'landuse:grass', 'landuse:cemetery', 'natur
 // land-cover codes baked into the terrain vertex colours
 const CV = { URBAN: 0, GREEN: 1, WATER: 2, DIRT: 3, PAVED: 4 };
 
+// NO GRASS ON THE MARKETPLACE. The mall is brick building-face to building-face; any OSM
+// green that leaks onto it (residential landuse, park fringes) is both wrong and reads as
+// lost riding room. Everything green within this distance of the centreline is culled —
+// from the terrain raster AND the drape overlays.
+const MALL_GRASS_CLEAR = 24;
+function mallGrassCull(WORLD) {
+  const cl = (WORLD.churchStreet && WORLD.churchStreet.centerline) || [];
+  if (cl.length < 2) return null;
+  const r2 = MALL_GRASS_CLEAR * MALL_GRASS_CLEAR;
+  return (x, z) => {
+    for (let i = 0; i < cl.length - 1; i++) {
+      const a = cl[i], b = cl[i + 1];
+      const dx = b[0] - a[0], dz = b[1] - a[1]; const l2 = dx * dx + dz * dz || 1;
+      let t = ((x - a[0]) * dx + (z - a[1]) * dz) / l2; t = clamp(t, 0, 1);
+      const px = a[0] + dx * t - x, pz = a[1] + dz * t - z;
+      if (px * px + pz * pz < r2) return true;
+    }
+    return false;
+  };
+}
+
 const LAKE_Y = -33.5;              // Lake Champlain surface, local metres (29.6 m ASL vs origin 63.44)
 
 // ---------------------------------------------------------------------------
@@ -187,18 +208,19 @@ export function buildGround(ctx) {
 // land cover raster
 // ---------------------------------------------------------------------------
 function paintCover(cover, WORLD, nx, nz, gs, LX0, LZ0) {
-  const stamp = (pts, code) => {
+  const cull = mallGrassCull(WORLD);
+  const stamp = (pts, code, skip) => {
     let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
     for (const p of pts) { if (p[0] < x0) x0 = p[0]; if (p[0] > x1) x1 = p[0]; if (p[1] < z0) z0 = p[1]; if (p[1] > z1) z1 = p[1]; }
     const i0 = Math.max(0, Math.floor((x0 - LX0) / gs)), i1 = Math.min(nx, Math.ceil((x1 - LX0) / gs));
     const j0 = Math.max(0, Math.floor((z0 - LZ0) / gs)), j1 = Math.min(nz, Math.ceil((z1 - LZ0) / gs));
     for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
       const x = LX0 + i * gs, z = LZ0 + j * gs;
-      if (pointInPoly(x, z, pts)) cover[j * (nx + 1) + i] = code;
+      if (pointInPoly(x, z, pts) && !(skip && skip(x, z))) cover[j * (nx + 1) + i] = code;
     }
   };
   for (const a of WORLD.areas || []) {
-    if (GREEN_KINDS.includes(a.kind)) stamp(a.pts, CV.GREEN);
+    if (GREEN_KINDS.includes(a.kind)) stamp(a.pts, CV.GREEN, cull);
   }
   for (const a of WORLD.areas || []) {
     if (a.kind === 'amenity:parking') stamp(a.pts, CV.PAVED);
@@ -505,7 +527,7 @@ function curbRamp(B, collide, a, na, ya, sg, hw, layer, WALK, CURB) {
 // ---------------------------------------------------------------------------
 // draping arbitrary polygons over the heightfield
 // ---------------------------------------------------------------------------
-function drape(tris, pts, gridH, lift, colFn, maxEdge = 9, flatY = null) {
+function drape(tris, pts, gridH, lift, colFn, maxEdge = 9, flatY = null, skip = null) {
   const contour = pts.map(p => new THREE.Vector2(p[0], p[1]));
   let faces;
   try { faces = THREE.ShapeUtils.triangulateShape(contour, []); } catch (e) { return; }
@@ -521,6 +543,7 @@ function drape(tris, pts, gridH, lift, colFn, maxEdge = 9, flatY = null) {
       else { const p = [(c[0] + a[0]) / 2, (c[1] + a[1]) / 2]; emit(a, b, p, depth + 1); emit(p, b, c, depth + 1); }
       return;
     }
+    if (skip && skip((a[0] + b[0] + c[0]) / 3, (a[1] + b[1] + c[1]) / 3)) return;   // culled cover (mall grass)
     const A = [a[0], Y(a[0], a[1]), a[1]], Bp = [b[0], Y(b[0], b[1]), b[1]], Cp = [c[0], Y(c[0], c[1]), c[1]];
     tris.tri(A, Cp, Bp, colFn((a[0] + b[0] + c[0]) / 3, (a[1] + b[1] + c[1]) / 3));
   };
@@ -532,6 +555,7 @@ function drape(tris, pts, gridH, lift, colFn, maxEdge = 9, flatY = null) {
 // ---------------------------------------------------------------------------
 function buildAreas(ctx, B, gridH, near) {
   const { WORLD, collide } = ctx;
+  const cull = mallGrassCull(WORLD);
   const LOT = C(0x3e4044), GRASS = C(0x6f8a4a), WATER = C(0x4f7286), DIRT = C(0x776a58), PAVED = C(0xb4afa3);
   const shade = (base, amt) => (x, z) => {
     const t = 1 + amt * ((((hashStr((x | 0) + ':' + (z | 0)) >>> 9) & 255) / 255) - 0.5);
@@ -555,7 +579,7 @@ function buildAreas(ctx, B, gridH, near) {
       drape(B.dirt, a.pts, gridH, 0.03, shade(DIRT, 0.2), 12);
       if (a.name) fenceLine(ctx, B, gridH, [...a.pts, a.pts[0]], 1.9, 'Construction fence');
     } else if (GREEN_KINDS.includes(a.kind)) {
-      drape(B.green, a.pts, gridH, 0.025, shade(GRASS, 0.16), 9);
+      drape(B.green, a.pts, gridH, 0.025, shade(GRASS, 0.16), 9, null, cull);
     } else if (a.kind === 'highway:pedestrian' || a.kind === 'leisure:common') {
       drape(B.concrete, a.pts, gridH, 0.03, shade(PAVED, 0.12), 9);
     }
@@ -763,7 +787,7 @@ function buildPark(ctx, B, gridH, park, plaza) {
   const pts = park.pts;
   const LAWN = C(0x74914c), PATH = C(0xc4bfae), PAVER = C(0xb7b0a2), COBB = C(0x9a958a), WET = C(0x6f6d67), SEAT = C(0xaba79c);
 
-  drape(B.green, pts, gridH, 0.02, () => LAWN, 8);
+  drape(B.green, pts, gridH, 0.02, () => LAWN, 8, null, mallGrassCull(ctx.WORLD));
 
   // radiating paths (the OSM footways in the park plus the missing spokes)
   const inside = (x, z) => pointInPoly(x, z, pts);

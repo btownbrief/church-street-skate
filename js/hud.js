@@ -22,12 +22,14 @@ export class Hud {
       <div id="balance"><div id="balance-knob"></div></div>
       <div id="charge"><i></i><b></b></div>
       <div id="popups"></div>
+      <div id="tape"></div>
       <div id="callout"></div>
       <canvas id="minimap" width="220" height="220"></canvas>
       <div id="speed"></div>`;
     this.el = { score: root.querySelector('#score-val'), best: root.querySelector('#best-val'), loc: root.querySelector('#loc-name'), combo: root.querySelector('#combo'), comboTricks: root.querySelector('#combo-tricks'), comboTotal: root.querySelector('#combo-total'), balance: root.querySelector('#balance'), knob: root.querySelector('#balance-knob'), popups: root.querySelector('#popups'), callout: root.querySelector('#callout'), map: root.querySelector('#minimap'), speed: root.querySelector('#speed'), btnMap: root.querySelector('#btn-map'), btnPause: root.querySelector('#btn-pause'),
       special: root.querySelector('#m-special > i'), flow: root.querySelector('#m-flow > i'), mSpecial: root.querySelector('#m-special'), letters: root.querySelector('#letters'), timer: root.querySelector('#timer'),
-      charge: root.querySelector('#charge'), chargeFill: root.querySelector('#charge > i'), chargeBonus: root.querySelector('#charge > b') };
+      charge: root.querySelector('#charge'), chargeFill: root.querySelector('#charge > i'), chargeBonus: root.querySelector('#charge > b'),
+      tape: root.querySelector('#tape') };
     this.shownScore = 0; this.mapOn = true; this.comboFlash = 0; this._lastLoc = ''; this._locT = 0; this._calloutT = 0;
     this._special = -1; this._flow = -1; this._lettersKey = ''; this._timerTxt = '';
     this.combo = [];                      // reused scratch for the combo ticker (no per-frame alloc)
@@ -40,19 +42,28 @@ export class Hud {
 
   popup(text, cls = '', x = 50, y = 38) {
     const d = document.createElement('div'); d.className = 'pop ' + cls; d.textContent = text; d.style.left = x + '%'; d.style.top = y + '%';
-    this.el.popups.appendChild(d); setTimeout(() => d.remove(), 1400);
+    this.el.popups.appendChild(d); setTimeout(() => d.remove(), 2600);
     while (this.el.popups.children.length > 6) this.el.popups.firstChild.remove();
   }
-  callout(title, sub) { this.el.callout.innerHTML = `<div class="ct">${title}</div>${sub ? `<div class="cs">${sub}</div>` : ''}`; this.el.callout.classList.add('on'); this._calloutT = 2.6; }
+  // TRICK TAPE: a running history in the corner. Every trick lands a row that stays long
+  // enough to actually read (the combo ticker banks and vanishes in under a second).
+  tape(text, cls = '') {
+    const d = document.createElement('div'); d.className = 'row ' + cls; d.textContent = text;
+    this.el.tape.prepend(d);
+    while (this.el.tape.children.length > 8) this.el.tape.lastChild.remove();
+    setTimeout(() => { d.classList.add('out'); setTimeout(() => d.remove(), 600); }, 8000);
+  }
+  callout(title, sub) { this.el.callout.innerHTML = `<div class="ct">${title}</div>${sub ? `<div class="cs">${sub}</div>` : ''}`; this.el.callout.classList.add('on'); this._calloutT = 4.2; }
 
   handle(ev, sk) {
     switch (ev.type) {
-      case 'trick': this.comboFlash = 1; break;
+      case 'trick': this.comboFlash = 1; this.tape(`${ev.name}  +${ev.pts.toLocaleString()}`); break;
       case 'bank': this.popup(`+${ev.total.toLocaleString()}`, 'bank', 50, 30); if (ev.spot) this.callout(ev.spot, `spot bonus`); break;
-      case 'bail': if (ev.lost > 0) this.popup(`BAIL  −${ev.lost.toLocaleString()}`, 'bail', 50, 34); else this.popup('BAIL', 'bail', 50, 34); break;
+      case 'bail': if (ev.lost > 0) this.popup(`BAIL  −${ev.lost.toLocaleString()}`, 'bail', 50, 34); else this.popup('BAIL', 'bail', 50, 34); this.tape('bail', 'bail'); break;
       case 'spotFirst': this.callout(`NEW SPOT: ${ev.name}`, `+${ev.bonus} · ${sk.spotsHit.size}/${sk.spots.length} Burlington spots`); break;
       case 'land': if (ev.sketchy) this.popup('sketchy', 'sk', 50, 44); break;
-      case 'gap': this.callout(ev.name.toUpperCase(), ev.first ? `NEW GAP · +${ev.pts}` : `+${ev.pts}`); break;
+      case 'stomp': this.popup('STOMPED!', 'stomp', 50, 34); break;
+      case 'gap': this.callout(ev.name.toUpperCase(), ev.first ? `NEW GAP · +${ev.pts}` : `+${ev.pts}`); this.tape(`${ev.name}  +${ev.pts.toLocaleString()}`, 'gap'); break;
       // Wrecks are a separate flavour stat, so the toast is explicit that it scores nothing.
       case 'wreck': this.popup(`${ev.name.toUpperCase()}! +0 · wreck score ${ev.score.toLocaleString()}`, 'wreck', 50, 40); break;
       case 'revert': this.popup('revert', 'sk', 50, 46); break;

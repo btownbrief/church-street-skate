@@ -149,10 +149,17 @@ function stepGame(dt, now) {
   // so the appended events get handled in this same pass before the queue is cleared.
   for (const ev of skater.events) {
     if (ev.type === 'land') gaps.handle(ev, skater);
+    // CAR HOP: clearing vehicles pays, and clearing several pays much more. Landing on a
+    // car doesn't count (groundKind 'car') — over means over.
+    if (ev.type === 'land' && ev.airTime > 0.25 && skater.groundKind !== 'car') {
+      const n = world.carsCleared(ev.fromX, ev.fromZ, ev.x, ev.z);
+      if (n > 0) skater.addTrickPending({ name: n === 1 ? 'Car Hop' : n + '-Car Hop', pts: 120 * n + 80 * n * (n - 1) });
+    }
     hud.handle(ev, skater); audio.handle(ev); chal.handle(ev, skater); if (evTap) evTap(ev, skater);
     if (ev.type === 'bail') follow.kick(ev.why === 'wall' || ev.why === 'car' ? 1.2 : 0.7);
     if (ev.type === 'land' && ev.speed > 8) follow.kick(0.25);
     if (ev.type === 'maple') { mesh.leafBurst(skater.pos); follow.kick(0.4); }
+    if (ev.type === 'stomp') { mesh.stompBurst(skater.pos); follow.kick(0.5); }
     if (ev.type === 'gap') follow.kick(0.3);
     if (ev.type === 'pop' && document.body.classList.contains('show-hint')) {
       document.body.classList.add('hint-out');

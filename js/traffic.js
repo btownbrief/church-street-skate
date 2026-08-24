@@ -183,6 +183,7 @@ export function createTraffic(ctx) {
     return Math.sqrt(best);
   }
   const nearMall = (x, z) => distToMall(x, z) < 14;   // no parking on the bricks
+  const parkedCars = [];       // {x, z} of every placed parked car, for the car-hop count
   {
     const slots = [];
     for (const e of edges) {
@@ -210,6 +211,7 @@ export function createTraffic(ctx) {
     parkedShown = take;
     for (let i = 0; i < take; i++) {
       const sl = slots[i], T = pickType();
+      parkedCars.push({ x: sl.x, z: sl.z });
       const y = terrain.heightAt(sl.x, sl.z) + 0.02;
       const hA = terrain.heightAt(sl.x - Math.sin(sl.yaw) * 2, sl.z - Math.cos(sl.yaw) * 2);
       const hB = terrain.heightAt(sl.x + Math.sin(sl.yaw) * 2, sl.z + Math.cos(sl.yaw) * 2);
@@ -224,10 +226,12 @@ export function createTraffic(ctx) {
       collide.addSurface({ x: sl.x + T.cz * cs, z: sl.z + T.cz * cc, w: T.cw, d: T.cl, yaw: sl.yaw, top: roof, bottom: deck, kind: 'car', name: 'Car roof', grindable: true, edgeKind: 'rail' });
       // Ride-up ramps: bumpers → deck, and windshield/rear glass → roof. A parked car is a
       // fun-box you can hit at speed from either end, not a wall that eats your run.
+      // Bumper run lengthened 0.7 → 1.4: the old ~0.9 slope launched riders instead of
+      // carrying them up onto the hood.
       const P2 = (lz) => [sl.x + lz * cs, sl.z + lz * cc];  // point at local z along the car
       const hb = T.bl / 2, cz0 = T.cz - T.cl / 2, cz1 = T.cz + T.cl / 2;
       for (const s2 of [-1, 1]) {
-        const [ax2, az2] = P2(s2 * (hb + 0.7)), [bx2, bz2] = P2(s2 * (hb - 0.35));
+        const [ax2, az2] = P2(s2 * (hb + 1.4)), [bx2, bz2] = P2(s2 * (hb - 0.35));
         collide.addRamp({ ax: ax2, az: az2, bx: bx2, bz: bz2, w: T.bw, yLow: y, yHigh: deck, kind: 'ramp', name: 'Parked car' });
       }
       { // windshield (deck → roof) and the rear glass, whichever way the cabin sits
@@ -259,6 +263,13 @@ export function createTraffic(ctx) {
       edgeAt(e, s, laneOff(e.hw) * dir, _e);
       const d = Math.hypot(_e[0] - sk.pos.x, _e[1] - sk.pos.z);
       if (d < minD || d > maxD) continue;
+      // never materialise in plain sight: a new car must be far away, or behind the
+      // camera (which faces the direction of travel) — this was the pop-in
+      if (d < 150) {
+        const sp2 = Math.hypot(sk.vel.x, sk.vel.z);
+        const fx = sp2 > 1 ? sk.vel.x / sp2 : -Math.sin(sk.yaw), fz = sp2 > 1 ? sk.vel.z / sp2 : -Math.cos(sk.yaw);
+        if ((_e[0] - sk.pos.x) * fx + (_e[1] - sk.pos.z) * fz > 0) continue;
+      }
       let clash = false;
       for (const o of cars) if (o !== c && o.e === e && Math.abs(o.s - s) < 10) { clash = true; break; }
       if (clash) continue;
@@ -380,6 +391,17 @@ export function createTraffic(ctx) {
     return false;
   }
 
+  // A vehicle CLIP: shove + toss, board kept. Grinds/manuals end, the wobble marks it
+  // sketchy, and the air state is set up exactly the way pop() does it.
+  function clip(sk, ux, uz, v, k, vy) {
+    if (sk.state === 'grind') { sk.grind = null; sk.balance = 0; }
+    if (sk.state === 'manual') { sk.manual = null; sk.balance = 0; }
+    sk.vel.x += ux * v * k; sk.vel.z += uz * v * k; sk.vel.y = Math.max(sk.vel.y, vy);
+    if (sk.state !== 'air') { sk.state = 'air'; sk.onGround = false; sk.airTime = 0; sk.airPeak = sk.pos.y; }
+    sk.sketchy = 1;
+    if (sk.emit) sk.emit('bump', { speed: v });
+  }
+
   // ---- update ------------------------------------------------------------
   let seeded = false;
   let active = nMove;
@@ -406,7 +428,7 @@ export function createTraffic(ctx) {
       const c = cars[i];
       if (!c.e) { placeCar(c, sk, 55, 165); continue; }
       const far = Math.hypot(c.x - sk.pos.x, c.z - sk.pos.z);
-      if (far > 200) { if (placeCar(c, sk, 55, 165)) { paint(c.idx, c.col, false); colDirty = true; } drawVehicle(c.idx, c); continue; }
+      if (far > 280) { if (placeCar(c, sk, 60, 220)) { paint(c.idx, c.col, false); colDirty = true; } drawVehicle(c.idx, c); continue; }
 
       // target speed
       let want = c.e.speed;
@@ -433,14 +455,14 @@ export function createTraffic(ctx) {
       if (c.dir > 0 ? c.s >= c.e.len : c.s <= 0) nextEdge(c);
       updateCarPose(c);
 
-      // hit the skater?
+      // hit the skater? A moving car CLIPS you — tossed into the air, never off the board
+      // (his call: cars don't bail you, only other objects do)
       if (c.v > 2 && sk.state !== 'bail') {
         const dx = sk.pos.x - c.x, dz = sk.pos.z - c.z;
         if (dx * dx + dz * dz < 36) {
           const f = dx * c.ux + dz * c.uz, side = -dx * c.uz + dz * c.ux;
           if (Math.abs(f) < c.T.bl / 2 + 0.5 && Math.abs(side) < c.T.bw / 2 + 0.5 && sk.pos.y - c.y < 1.6 && sk.pos.y - c.y > -1.2) {
-            sk.startBail('car');
-            sk.vel.x += c.ux * c.v * 0.55; sk.vel.z += c.uz * c.v * 0.55; sk.vel.y = Math.max(sk.vel.y, 3.2);
+            clip(sk, c.ux, c.uz, c.v, 0.55, 3.2);
             if (sk.emit) sk.emit('honk', { x: c.x, z: c.z });
             c.v *= 0.25;
           }
@@ -485,7 +507,8 @@ export function createTraffic(ctx) {
       busGroup.rotation.set(0, 0, 0);
       busGroup.rotateY(bus.yaw); busGroup.rotateX(bus.pitch);
       if (bus.v > 2 && sk.state !== 'bail' && Math.abs(f) < bus.len / 2 + 0.6 && Math.abs(side) < 1.9 && Math.abs(sk.pos.y - bus.y) < 2) {
-        sk.startBail('car'); sk.vel.x += bus.ux * bus.v * 0.6; sk.vel.z += bus.uz * bus.v * 0.6; sk.vel.y = Math.max(sk.vel.y, 3.4); bus.v *= 0.2;
+        clip(sk, bus.ux, bus.uz, bus.v, 0.6, 3.4); bus.v *= 0.2;
+        if (sk.emit) sk.emit('honk', { x: bus.x, z: bus.z });
       }
     }
 
@@ -503,13 +526,31 @@ export function createTraffic(ctx) {
     window.__carDbg = (sx, sz) => { let b = null, bd = 1e9; for (let i = 0; i < active; i++) { const c = cars[i]; if (!c.e) continue; const d = Math.hypot(c.x - sx, c.z - sz); if (d < bd) { bd = d; b = c; } } return b ? { x: b.x, z: b.z, y: b.y, ux: b.ux, uz: b.uz, v: b.v, d: bd, blocked: b.blocked, n: cars.length, parked: nPark, bus: bus.on ? { x: bus.x, z: bus.z, v: bus.v } : null } : null; };
   }
   update.degrade = () => {
+    // movers only. Parked cars USED to be hidden here too — but their colliders stay, so
+    // players watched cars vanish in front of them (and then bounced off thin air).
     active = Math.max(3, active >> 1); applyCount();
-    // hide half the parked cars too — they are the biggest slice of the traffic budget
-    parkedShown = Math.max(6, parkedShown >> 1);
-    for (let i = parkedShown; i < nPark; i++) { part(bodyM, i, 0, -500, 0, 0.001, 0.001, 0.001); part(cabinM, i, 0, -500, 0, 0.001, 0.001, 0.001); for (let k = 0; k < 4; k++) { part(wheelM, i * 4 + k, 0, -500, 0, 0.001, 0.001, 0.001); part(lightM, i * 4 + k, 0, -500, 0, 0.001, 0.001, 0.001); } }
     bodyM.instanceMatrix.needsUpdate = cabinM.instanceMatrix.needsUpdate = wheelM.instanceMatrix.needsUpdate = lightM.instanceMatrix.needsUpdate = true;
   };
   updaters.push(update);
+
+  // CAR HOP: how many vehicles sit under the flight path from (ax,az) to (bx,bz)?
+  // Interior of the segment only — a car you launched off or landed on is not "cleared".
+  // The bus is big enough to count double.
+  ctx.carsCleared = (ax, az, bx, bz) => {
+    const dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz;
+    if (l2 < 9) return 0;
+    const under = (x, z, r) => {
+      const t = ((x - ax) * dx + (z - az) * dz) / l2;
+      if (t < 0.12 || t > 0.88) return false;
+      const px = ax + dx * t - x, pz = az + dz * t - z;
+      return px * px + pz * pz < r * r;
+    };
+    let n = 0;
+    for (const p of parkedCars) if (under(p.x, p.z, 2.2)) n++;
+    for (const c of cars) if (c.e && under(c.x, c.z, 2.4)) n++;
+    if (bus.on && bus.e && under(bus.x, bus.z, 3.2)) n += 2;
+    return n;
+  };
 
   function roadHalfWidth(r) { return roadWidth(r) / 2; }
 }
