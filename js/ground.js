@@ -486,6 +486,9 @@ function buildStreets(ctx, B, gridH, near, rnd) {
   const zebra = C(0xdedbd0);
   for (const p of WORLD.props || []) {
     if (p.kind !== 'highway:crossing' || !near(p.x, p.z, 130)) continue;
+    // Cherry, Bank and College cross the Marketplace on the brick; the crossings there are
+    // read in granite banding and the tri-tone paving, never in painted zebra stripes.
+    if (nearMallCore(p.x, p.z)) continue;
     let best = null, bd = 9;
     for (const r of drawn) {
       if (r.kind === 'service') continue;
@@ -750,13 +753,18 @@ function buildMall(ctx, B, gridH, near) {
   // The brick colour lives in the texture; vertex colour is a *tint multiplier* so the
   // three D&K tones (rust / slate blue-grey / buff) read across the zones without
   // double-darkening the map.
-  const RUST = [1, 1, 1], SLATE = [0.80, 0.85, 0.93], BUFF = [1.14, 1.07, 0.92];
+  const RUST = [1, 1, 1], SLATE = [0.74, 0.81, 0.92], BUFF = [1.22, 1.12, 0.90];
   // fractions of half-width; finer than the D&K zones so the pavers hug the 5 m terrain lattice
   const lanes = [-1, -0.87, -0.74, -0.6, -0.47, -0.34, -0.21, -0.1, 0, 0.1, 0.21, 0.34, 0.47, 0.6, 0.74, 0.87, 1];
-  const tint = (f, x, z) => {
+  // The mall is not one uniform brick field (BURLINGTON-REFERENCE §4.1, D&K 2017 sheets):
+  // a dual-tone running bond along the shopfronts, and down the centre a tri-tone *linear*
+  // pattern — bands running the length of Church Street. A random speckle everywhere read as
+  // noise; keyed to the lane index the centre now reads as stripes you can follow downhill.
+  const BAND = [RUST, SLATE, BUFF, RUST, SLATE, RUST, BUFF, SLATE];
+  const tint = (f, k, x, z) => {
     const n = (((hashStr(((x * 2) | 0) + ':' + ((z * 2) | 0)) >>> 11) & 255) / 255);
-    const base = Math.abs(f) < 0.3 ? SLATE : (n > 0.86 ? BUFF : (n > 0.72 ? SLATE : RUST));
-    const t = 0.93 + 0.16 * n;
+    const base = Math.abs(f) < 0.5 ? BAND[k % BAND.length] : (n > 0.84 ? BUFF : RUST);
+    const t = 0.94 + 0.13 * n;
     return [base[0] * t, base[1] * t, base[2] * t];
   };
 
@@ -769,7 +777,7 @@ function buildMall(ctx, B, gridH, near) {
       const A2 = [a[0] + na[0] * oa1, 0, a[1] + na[1] * oa1]; A2[1] = gridH(A2[0], A2[2]) + 0.04;
       const Bp = [b[0] + nb[0] * ob0, 0, b[1] + nb[1] * ob0]; Bp[1] = gridH(Bp[0], Bp[2]) + 0.04;
       const B2 = [b[0] + nb[0] * ob1, 0, b[1] + nb[1] * ob1]; B2[1] = gridH(B2[0], B2[2]) + 0.04;
-      const col = tint((f0 + f1) / 2, a[0], a[1]);
+      const col = tint((f0 + f1) / 2, k, a[0], a[1]);
       const uv = (p) => [p[0] / 3.2, p[2] / 3.2];
       B.brick.quad(A, Bp, B2, A2, col, uv(A), uv(Bp), uv(B2), uv(A2));
     }
@@ -861,7 +869,7 @@ function nearestIdx(line, p) {
 // nested tri-tone diamond mitred into the intersection paving
 function diamond(B, gridH, p, n, t, R) {
   // tint multipliers over the brick map — slate, buff, rust, pale granite
-  const tones = [[0.80, 0.85, 0.93], [1.14, 1.07, 0.92], [1, 1, 1], [1.22, 1.2, 1.16]];
+  const tones = [[0.68, 0.76, 0.90], [1.26, 1.14, 0.90], [1, 0.97, 0.95], [1.34, 1.31, 1.24]];
   const rings = [R, R * 0.72, R * 0.46, R * 0.22, 0];
   const P = (u, v) => {
     const x = p[0] + n[0] * u + t[0] * v, z = p[1] + n[1] * u + t[1] * v;
@@ -1159,8 +1167,11 @@ function brickTexture() {
   const M = 3.2;                       // metres the tile covers
   const BW = 0.205 / M * S, BH = 0.098 / M * S;
   g.fillStyle = '#5d4436'; g.fillRect(0, 0, S, S);
-  const tones = ['#b06a44', '#a05c3c', '#9c5539', '#b8794f', '#8d7c7e', '#c2a37c'];
-  const w = ['#b06a44', '#a05c3c', '#9c5539', '#b8794f'];
+  // Warm red-orange to salmon, "visibly varied paver to paver" — but only just. The odd
+  // grey and buff pavers used to run at 21% and read as a speckled, dirty field; the
+  // three D&K tones belong to the zone tinting above, not to individual bricks.
+  const tones = ['#b06a44', '#a05c3c', '#9c5539', '#b8794f', '#9c8b83', '#bfa585'];
+  const w = ['#b06a44', '#a05c3c', '#9c5539', '#b8794f', '#ab6440', '#a96e4b'];
   let seed = 9;
   const rr = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
   const rows = Math.round(S / BH), cols = Math.ceil(S / BW) + 1;
@@ -1170,7 +1181,7 @@ function brickTexture() {
     for (let i = -1; i < cols; i++) {
       const x = i * BW + off, y = r * bh;
       const p = rr();
-      const col = p > 0.9 ? tones[5] : p > 0.79 ? tones[4] : w[(rr() * w.length) | 0];
+      const col = p > 0.945 ? tones[5] : p > 0.895 ? tones[4] : w[(rr() * w.length) | 0];
       g.fillStyle = col;
       g.fillRect(x + 0.6, y + 0.6, BW - 1.2, bh - 1.2);
       if (rr() > 0.86) { g.fillStyle = 'rgba(0,0,0,0.10)'; g.fillRect(x + 0.6, y + 0.6, BW - 1.2, bh - 1.2); }

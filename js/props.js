@@ -16,11 +16,19 @@
 // One vertex-coloured material carries almost everything, so a whole prop type (or a whole
 // pile of unrelated one-offs) costs a single draw call.
 import * as THREE from '../vendor/three.module.min.js';
+import { rng as makeRng } from './util.js';
 
 export function buildProps(ctx) {
   const { scene, collide, WORLD, spots, rng, quality } = ctx;
   const mobile = !!quality.mobile;
-  const R = rng;
+  // Two streams. `R` is the shared world stream — npcs.js and traffic.js draw from it after
+  // this module, so anything added here that consumes it moves every parked car and every
+  // pedestrian in Burlington, and named-gap lines that were clear stop being clear. Scenery
+  // added after the original layout therefore borrows `sideStream()` instead, which leaves
+  // the shared stream exactly where it was.
+  let STREAM = rng;
+  const R = () => STREAM();
+  const sideStream = (seed) => { const prev = STREAM; STREAM = makeRng(seed); return () => { STREAM = prev; }; };
   const rr = (a, b) => a + R() * (b - a);
   const ri = (a, b) => Math.floor(a + R() * (b - a + 1));
   const pick = (arr) => arr[Math.floor(R() * arr.length)];
@@ -281,10 +289,13 @@ export function buildProps(ctx) {
     const nb = opts.blobs !== undefined ? opts.blobs : (mobile ? ri(2, 3) : ri(3, 5));
     put('trunk', x, y, z, rr(0, 6.28), rr(0.85, 1.15), h, rr(0.85, 1.15));
     const autumn = opts.autumn || chance(0.08);
+    // ox/oz lean the whole crown off the trunk — used on the mall so the canopies grow out
+    // over the shopfronts instead of closing over the middle of the street
+    const ox = opts.ox || 0, oz = opts.oz || 0;
     for (let i = 0; i < nb; i++) {
       const a = (i / nb) * 6.28 + rr(-0.5, 0.5), rad = i === 0 ? 0 : rr(0.14, 0.3) * w;
       const bw = w * rr(0.3, 0.44), bh = bw * rr(0.55, 0.8);
-      put('canopy', x + Math.cos(a) * rad, y + h * rr(0.94, 1.12) + bh * 0.2, z + Math.sin(a) * rad,
+      put('canopy', x + ox + Math.cos(a) * rad, y + h * rr(0.94, 1.12) + bh * 0.2, z + oz + Math.sin(a) * rad,
         rr(0, 6.28), bw, bh, bw * rr(0.85, 1.15), autumn ? pick(AUTUMN) : pick(GREENS));
     }
     blocker(x, z, 0.24, y + h * 0.75, 'Tree');
@@ -352,6 +363,15 @@ export function buildProps(ctx) {
   }
 
   // ---- 5b. trees, ~6 m rhythm, alternating sides, 2–3 gaps per block ---------
+  // Two things the honey locusts have to do: shade the brick, and NOT close the view.
+  // Recognition item #1 in docs/BURLINGTON-REFERENCE.md §7 is that the Unitarian spire
+  // closes the axis looking north and City Hall closes it looking south — "if the player
+  // can see both terminations from mid-street, the level reads as Burlington." Canopies
+  // centred 4 m off the granite line at 6 m up met over the middle and swallowed both.
+  // Real Church Street trees are high-branched and stand out in the furniture line, so the
+  // centre lane stays open: lifted, trimmed narrower, and the crown leant out over the
+  // shopfront side the way a street tree pruned back off a fire lane actually grows.
+
   BLOCKS.forEach((bl) => {
     const dense = bl.i === 1 || bl.i === 2;
     const step = dense ? 5.8 : 6.6;
@@ -363,11 +383,14 @@ export function buildProps(ctx) {
       const side = (i % 2) ? 1 : -1;
       const ss = inner[side].slot(s + rr(-0.5, 0.5), 2.2, 3.5);
       if (ss === null) continue;
+      // NB: the trunk offset is left exactly where it was — the named mall gaps are flown
+      // down these lines and a trunk blocker moved half a metre out kills "Big Joe Bomb".
       const p = pos(ss, side * rr(3.8, 4.4)), y = groundY(p.x, p.z);
       addTreePit(p.x, p.z, y);
-      const h = addTree(p.x, p.z, y, { h: rr(5.2, 6.9), w: rr(7, 9) });
+      const w = rr(6.0, 7.4);
+      const h = addTree(p.x, p.z, y, { h: rr(6.6, 8.4), w, ox: p.tz * side * w * 0.26, oz: -p.tx * side * w * 0.26 });
       if (chance(0.3)) addTreeGuard(p.x, p.z, y);
-      if (!mobile || chance(0.5)) addStringLights(p.x, y + h + 0.6, p.z, 2.1, 1.4, mobile ? 5 : 9);
+      if (!mobile || chance(0.5)) addStringLights(p.x + p.tz * side * w * 0.26, y + h + 0.6, p.z - p.tx * side * w * 0.26, 2.1, 1.4, mobile ? 5 : 9);
       nTrees++;
     }
   });
@@ -382,9 +405,11 @@ export function buildProps(ctx) {
     const n = ri(2, 3);
     const base = pos(s, side * rr(3.6, 4.4));
     for (let i = 0; i < n; i++) {
-      const a = i / n * 6.28 + rr(0, 1), d = i === 0 ? 0 : rr(0.75, 1.35);
+      const a = i / n * 6.28 + rr(0, 1), d = i === 0 ? 0 : rr(0.55, 1.05);
       const x = base.x + Math.cos(a) * d, z = base.z + Math.sin(a) * d, y = groundY(x, z);
-      const h = rr(0.6, 1.15), w = h * rr(1.1, 1.7), dd = h * rr(1.0, 1.6);
+      // "2–4 ft high" (BURLINGTON-REFERENCE §4.3). They were sitting 1.5 m tall and nearly
+      // 4 m across — boulders you could not ollie and nobody could sit on.
+      const h = rr(0.44, 0.80), w = h * rr(0.85, 1.3), dd = h * rr(0.8, 1.2);
       put('boulder', x, y + h * 0.42, z, rr(0, 6.28), w, h * 0.92, dd, pick([0x9a8f7e, 0x86796a, 0xa89985, 0x8f8474]));
       collide.addSurface({ x, z, w: w * 1.3, d: dd * 1.3, yaw: 0, top: y + h * 0.95, bottom: y, kind: 'ledge', name: tag || 'Boulder', grindable: true });
       nBould++;
@@ -903,19 +928,25 @@ export function buildProps(ctx) {
   const TREE_STREETS = [
     [['Main Street'], mobile ? 26 : 16, 3.2, [4.2, 5.8], [5.0, 6.8]],
     [['College Street', 'Pearl Street', 'Saint Paul Street', 'Cherry Street', 'Bank Street'], mobile ? 56 : 32, 2.8, [3.8, 5.4], [4.4, 6.2]],
-    // the run down to the lake: Battery St along the bluff, then Lake St and King St
+  ];
+  // Added after the original three streets, so it runs on the side stream — see sideStream().
+  const LAKE_TREE_STREETS = [
     [['Battery Street', 'Lake Street', 'King Street'], mobile ? 60 : 34, 3.0, [3.8, 5.4], [4.4, 6.2]],
   ];
-  for (const [names, sp, out, hr, wr] of TREE_STREETS) {
-    walkStreet(names, sp, (cx, cz, nx, nz, hw) => {
-      for (const side of [-1, 1]) {
-        const x = cx + nx * side * (hw + out), z = cz + nz * side * (hw + out);
-        if (!inPlay(x, z, 8) || inBuilding(x, z, 1.2) || onRoad(x, z, 1.2) || mallNear(x, z) || !farEnough(x, z, 9)) continue;
-        addTree(x, z, groundY(x, z), { h: rr(hr[0], hr[1]), w: rr(wr[0], wr[1]), blobs: mobile ? 2 : 3 });
-        claim(x, z); nStreetTrees++;
-      }
-    });
-  }
+  const plantStreetTrees = (list) => {
+    for (const [names, sp, out, hr, wr] of list) {
+      walkStreet(names, sp, (cx, cz, nx, nz, hw) => {
+        for (const side of [-1, 1]) {
+          const x = cx + nx * side * (hw + out), z = cz + nz * side * (hw + out);
+          if (!inPlay(x, z, 8) || inBuilding(x, z, 1.2) || onRoad(x, z, 1.2) || mallNear(x, z) || !farEnough(x, z, 9)) continue;
+          addTree(x, z, groundY(x, z), { h: rr(hr[0], hr[1]), w: rr(wr[0], wr[1]), blobs: mobile ? 2 : 3 });
+          claim(x, z); nStreetTrees++;
+        }
+      });
+    }
+  };
+  plantStreetTrees(TREE_STREETS);
+  { const done = sideStream(0x1a4e11); plantStreetTrees(LAKE_TREE_STREETS); done(); }
 
   // ---- 6b. Great Streets teardrop street lights -----------------------------
   let nSL = 0, slToggle = 0;
@@ -1093,6 +1124,40 @@ export function buildProps(ctx) {
       collide.addSurface({ x, z, w: 2.4, d: 0.52, yaw, top: y + 0.48, bottom: y, kind: 'bench', name: 'Park bench', grindable: true });
       nPBench++;
     }
+    // ~48 trees: mature big-canopy ones held along the west, south and north edges, young
+    // ones set in grates out in the hardscape (BURLINGTON-REFERENCE §3.3 — the 2020 Wagner
+    // Hodgson rebuild is "more open and less shaded than the old park", not treeless).
+    const plazaC = ctx.plaza || { x: cxp, z: czp, r: 8 };
+    const doneParkTrees = sideStream(0x7c0ffee);
+    let nParkTree = 0;
+    for (let i = 0; i < park.pts.length; i++) {
+      const a = park.pts[i], b = park.pts[(i + 1) % park.pts.length];
+      const L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      if (L < 6) continue;
+      const ux = (b[0] - a[0]) / L, uz = (b[1] - a[1]) / L;
+      let inx = -uz, inz = ux;                                  // inward normal
+      if ((a[0] + ux * L / 2 + inx - cxp) ** 2 + (a[1] + uz * L / 2 + inz - czp) ** 2 >
+          (a[0] + ux * L / 2 - cxp) ** 2 + (a[1] + uz * L / 2 - czp) ** 2) { inx = -inx; inz = -inz; }
+      const n = Math.max(1, Math.round(L / 11));
+      for (let k = 0; k < n; k++) {
+        const t = (k + 0.5) / n, ins = rr(4.2, 7.0);
+        const x = a[0] + ux * L * t + inx * ins, z = a[1] + uz * L * t + inz * ins;
+        if (inBuilding(x, z, 1.6) || onRoad(x, z, 1.6) || !farEnough(x, z, 7)) continue;
+        if (Math.hypot(x - plazaC.x, z - plazaC.z) < plazaC.r + 5) continue;
+        addTree(x, z, groundY(x, z), { h: rr(6.5, 9.0), w: rr(6.5, 9.0), blobs: mobile ? 2 : 4 });
+        claim(x, z); nParkTree++;
+      }
+    }
+    for (let k = 0; k < (mobile ? 3 : 6); k++) {               // young trees in the hardscape
+      const a = k / 6 * 6.28 + 0.9, rad = plazaC.r + rr(6, 11);
+      const x = plazaC.x + Math.cos(a) * rad, z = plazaC.z + Math.sin(a) * rad * 1.3;
+      if (inBuilding(x, z, 1.2) || onRoad(x, z, 1.2) || !farEnough(x, z, 6)) continue;
+      addTree(x, z, groundY(x, z), { h: rr(4.0, 5.2), w: rr(3.2, 4.4), blobs: 2 });
+      claim(x, z); nParkTree++;
+    }
+    nStreetTrees += nParkTree;
+    doneParkTrees();
+
     // café string lights over the park hardscape: slim poles, a sagging wire, warm bulbs
     const runs = mobile ? 2 : 3;
     const gp = [];
@@ -1120,6 +1185,7 @@ export function buildProps(ctx) {
   // the harbour side of the map was completely bare.
   let nWfTree = 0, nWfBench = 0, nWfLamp = 0;
   {
+    const doneWf = sideStream(0x5ea51de);
     const PROM = [[-685, 30], [-683, -30], [-684, -110], [-687, -180], [-688, -248]];
     const promAt = (t) => {                       // t in metres from the south end
       let acc = 0;
@@ -1167,6 +1233,7 @@ export function buildProps(ctx) {
       put('hoop', x, y, z, 0, 1, 1, 1, IRON);
       blocker(x, z, 0.1, y + 0.8, 'Bike rack');
     }
+    doneWf();
   }
 
   // the Marketplace maintenance golf cart, parked in front of City Hall

@@ -3,7 +3,7 @@
 // footprint listed in LANDMARK_IDS. Everything is primitives + tiny canvas textures,
 // merged per-material so the whole set costs ~25 draw calls.
 import * as THREE from '../vendor/three.module.min.js';
-import { pointInPoly, polyCentroid } from './util.js';
+import { pointInPoly, polyCentroid, rng as makeRng } from './util.js';
 
 export const LANDMARK_IDS = [
   'w166149257', // First Unitarian Universalist Society (head of Church St)
@@ -1262,10 +1262,16 @@ function hullGeo(len, beam, h) {
   return frustumGeo(beam * 0.46, len * 0.78, h, beam, len);
 }
 
+// Its own random stream, deliberately. ctx.rng is shared with props.js, npcs.js and
+// traffic.js, which all draw from it after this module runs; scattering a harbour full of
+// boats through it would move every parked car and pedestrian in Burlington and quietly
+// change which named-gap lines are still clear.
+const WF_RNG = makeRng(0xba7f100);
+
 L.waterfront = function (c) {
   const { mg, mats, ctx } = c;
   const T = ctx.terrain;
-  const R = ctx.rng;
+  const R = WF_RNG;
   const rr = (a, b) => a + R() * (b - a);
   // The whole harbour lands in the merged landmark meshes, which are never frustum-culled,
   // so its triangles are paid for on every frame wherever the player is. Thin it on phones.
@@ -1437,8 +1443,8 @@ L.waterfront = function (c) {
 
 // one low-poly boat. `sailing` raises a main and a jib; moored boats sit with bare poles.
 function boat(c, x, z, yaw, len, sailing) {
-  const { mg, mats, ctx } = c;
-  const R = ctx.rng;
+  const { mg, mats } = c;
+  const R = WF_RNG;
   const beam = len * 0.31, h = len * 0.26;
   const hullMat = [mats.hull, mats.hull, mats.hullNavy, mats.hullRed][Math.floor(R() * 4)] || mats.hull;
   const free = h * 0.52;                    // freeboard: how much hull stands out of the water
