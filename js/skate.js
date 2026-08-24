@@ -478,6 +478,12 @@ export class Skater {
     this.emit('bank', { total, n: real.length, spot: spot ? spot.name : null, tricks: real.map(t => t.name) });
     this.combo = []; this.comboPending = 0;
   }
+  // Straight-to-the-bank points that never belonged to a combo (the B-T-O-W-N bonus).
+  award(pts) {
+    this.score += Math.round(pts);
+    if (this.score > this.best) { this.best = this.score; storeSet('css-best', String(this.best)); }
+  }
+
   // Zero the score/session for a fresh 2-minute run. `best` (the all-time free-skate best)
   // deliberately survives — it is a lifetime figure, not a per-run one.
   resetScore() {

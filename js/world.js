@@ -33,6 +33,7 @@ export async function buildWorld({ scene, renderer, camera, quality }) {
   if (landmarks && landmarks.buildLandmarks) landmarks.buildLandmarks(ctx);
   const props = await tryImport('./props.js'); if (props && props.buildProps) props.buildProps(ctx);
   const park = await tryImport('./skatepark.js'); if (park && park.buildSkatepark) park.buildSkatepark(ctx);
+  const letters = await tryImport('./letters.js'); if (letters && letters.buildLetters) letters.buildLetters(ctx);
   const npcs = await tryImport('./npcs.js'); if (npcs && npcs.createNpcs) npcs.createNpcs(ctx);
   const traffic = await tryImport('./traffic.js'); if (traffic && traffic.createTraffic) traffic.createTraffic(ctx);
   if (!dataMod) testCourse(ctx);
@@ -52,7 +53,7 @@ export async function buildWorld({ scene, renderer, camera, quality }) {
   const stats = `${(WORLD.buildings || []).length} buildings · ${(WORLD.roads || []).length} streets · ${spots.length} spots`;
 
   return {
-    collide, terrain, spawn, spots, info, stats, WORLD, play, _locations: locations, cityInfo: ctx.cityInfo, landmarkSigns: ctx.landmarkSigns,
+    collide, terrain, spawn, spots, info, stats, WORLD, play, letters: ctx.letters, _locations: locations, cityInfo: ctx.cityInfo, landmarkSigns: ctx.landmarkSigns,
     update(dt, skater) { for (const u of updaters) u(dt, skater); },
     locationName(x, z) { return locator(x, z); },
     confine(sk) {
