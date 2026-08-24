@@ -88,6 +88,7 @@ export class SkaterMesh {
     this.bPitch = 0; this.bY = 0; this.grabAmt = 0; this.fYaw = -0.95; this.bYaw = -1.42;
     this.spinePitch = 0; this.spineYaw = -1.15; this.spineRoll = 0; this.headYaw = 0.5; this.headPitch = 0;
     this.landT = 0; this.wobbleT = 0; this.snapT = 0; this.prev = 'ride'; this.idle = 0; this.brake = 0; this.bailLay = 0;
+    this.pedal = 0; this.fakie = 0;
 
     this.shadowBlob = new THREE.Mesh(new THREE.CircleGeometry(0.46, 14), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.28, depthWrite: false }));
     this.shadowBlob.rotation.x = -Math.PI / 2; this.shadowBlob.renderOrder = -1; scene.add(this.shadowBlob);
@@ -219,9 +220,17 @@ export class SkaterMesh {
     const land = this.landT / 0.26;                        // 1 → 0 just after touchdown
     const wob = this.wobbleT > 0 ? Math.sin(this.wobbleT * 46) * (this.wobbleT / 0.45) : 0;
     const push = ride ? clamp(sk.pushAnim, 0, 1) : 0;
-    const braking = ride && sk.input && sk.input.throttle < -0.3 && sp > 0.6 ? 1 : 0;
+    // braking pose only while actually scrubbing forward speed — holding S past the stop
+    // is a fakie push, not a tail drag
+    const braking = ride && sk.input && sk.input.throttle < -0.3 && sk.fwdSpeed > 0.6 ? 1 : 0;
     this.brake = damp(this.brake, braking, 10, dt);
     const brake = this.brake;
+    // sustained-pedalling amount: the body opens up toward travel like a real push
+    this.pedal = damp(this.pedal, ride && sk.input && sk.input.throttle > 0.3 && !sk.charging ? 1 : 0, 6, dt);
+    const pedal = this.pedal;
+    // rolling fakie: look over the other shoulder
+    this.fakie = damp(this.fakie, (ride || manual) && sk.fwdSpeed < -0.5 ? 1 : 0, 6, dt);
+    const fakie = this.fakie;
     this.idle = damp(this.idle, ride && sp < 0.5 && !push ? 1 : 0, 4, dt);
     const idle = this.idle;
     const breath = Math.sin(t * 1.7) * 0.5 + 0.5;
@@ -277,7 +286,7 @@ export class SkaterMesh {
     if (grind) { ffz = -0.19; bfz = 0.235; }
     if (sk.flip) { ffx -= 0.05 * flipAmt; ffz -= 0.06 * flipAmt; ffUp += 0.14 * flipAmt; bfUp += 0.12 * flipAmt; bfx += 0.03 * flipAmt; }
     // front foot turns toward the nose while pushing
-    ffYaw = lerp(ffYaw, -0.34, Math.max(push, brake * 0.5));
+    ffYaw = lerp(ffYaw, -0.34, Math.max(push, pedal * 0.8, brake * 0.5));
     this._onBoard(this._v2, ffx, ffz, ffUp);
     let fx = this._v2.x, fy = this._v2.y, fz = this._v2.z;
     this._onBoard(this._v2, bfx, bfz, bfUp);
@@ -324,7 +333,13 @@ export class SkaterMesh {
     if (air) { sPitch = 0.22 + grab * 0.30; sRoll = 0; }
     if (grind) { sPitch = 0.30; sRoll = bal * 0.34; sYaw = -1.05; }
     if (manual) { sPitch = 0.06; sRoll = -bal * 0.30; }
-    if (ride) { sYaw = -1.15 + lean * 0.26; sRoll = lean * 0.13 + wob * 0.10; sPitch += push * 0.18 + brake * 0.12 + idle * (breath * 0.05 - 0.02); }
+    if (ride) {
+      // pedalling opens the hips and shoulders toward travel (a person turns to push);
+      // each stroke adds a little extra rotation on top of the sustained stance
+      sYaw = -1.15 + lean * 0.26 + pedal * 0.52 + push * 0.12 - fakie * 0.45;
+      sRoll = lean * 0.13 + wob * 0.10;
+      sPitch += push * 0.18 + brake * 0.12 + pedal * 0.06 + idle * (breath * 0.05 - 0.02);
+    }
     if (grabName === 'Indy') { sRoll += 0.34 * grab; sYaw += 0.20 * grab; }
     else if (grabName === 'Melon') { sRoll -= 0.30 * grab; sYaw -= 0.16 * grab; }
     else if (grabName === 'Nosegrab') { sPitch += 0.34 * grab; sYaw -= 0.40 * grab; }
@@ -337,7 +352,8 @@ export class SkaterMesh {
     this.spine.rotation.set(-this.spinePitch, this.spineYaw, this.spineRoll, 'YXZ');
 
     // head: looks over the front shoulder, glances around when idle
-    let hYaw = 0.52 + lean * 0.16, hPitch = 0.05 + crouch * 0.14;
+    let hYaw = 0.52 + lean * 0.16 - this.pedal * 0.34, hPitch = 0.05 + crouch * 0.14;
+    hYaw = lerp(hYaw, -0.45, this.fakie);                 // fakie: watch where you're going
     if (air) { hYaw = 0.60; hPitch = 0.14 + grab * 0.2; }
     if (grind) { hYaw = 0.62; hPitch = 0.05; }
     if (idle > 0.05) { hYaw += idle * Math.sin(t * 0.6) * 0.55; hPitch += idle * Math.sin(t * 0.43 + 1) * 0.12; }
@@ -372,6 +388,7 @@ export class SkaterMesh {
       const pk = push > 0 ? Math.sin((1 - push) * Math.PI) : 0;
       lf += 0.26 * pk; lu += 0.20 * pk; lr += 0.05 * pk;   // front arm swings forward
       rf -= 0.22 * pk; ru += 0.06 * pk;
+      lf += pedal * 0.10; lr -= pedal * 0.06; rf -= pedal * 0.08; // arms settle out for balance mid-push
       lf -= crouch * 0.34; lu += crouch * 0.10; rf -= crouch * 0.40; ru += crouch * 0.14;  // charging: arms back
       lu += wob * 0.22; ru -= wob * 0.22; lr -= wob * 0.10; rr += wob * 0.10;
       lu += idle * breath * 0.02;

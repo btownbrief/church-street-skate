@@ -445,35 +445,43 @@ export function createNpcs(ctx) {
 
   // body dimensions (metres, from the feet)
   const HIP = 0.86, SHOULDER = 1.42, TORSO_TOP = 1.48;
+  // A limb box of length `len` HANGING from a joint at (jx, jy, jz), swung by `pitch`.
+  // part() places boxes by their centre, so hang the centre half a length below the joint,
+  // rotated with the swing — otherwise arms sit centred AT shoulder height and stick up
+  // beside the head, and legs float half a leg off the ground.
+  function limb(mesh, i, jx, jy, jz, pitch, sx, len, sz, roll) {
+    const h = len / 2;
+    part(mesh, i, jx, jy - h * Math.cos(pitch), jz - h * Math.sin(pitch), pitch, sx, len, sz, roll);
+  }
   function poseBody(p, walkPhase, swing, headBob, armBase) {
     const i = p.i;
     const legA = Math.sin(walkPhase) * swing, legB = -legA;
-    const armA = -legA * 0.72, armB = -legB * 0.72;
+    const armA = -legA * 0.72 + armBase, armB = -legB * 0.72 + armBase;
     const lean = Math.min(swing, 0.5) * 0.18;
-    part(P.legL, i, -0.11, HIP, 0, legA, 0.15, 0.86, 0.19);
-    part(P.legR, i, 0.11, HIP, 0, legB, 0.15, 0.86, 0.19);
+    limb(P.legL, i, -0.11, HIP, 0, legA, 0.15, 0.86, 0.19);
+    limb(P.legR, i, 0.11, HIP, 0, legB, 0.15, 0.86, 0.19);
     part(P.torso, i, 0, HIP + 0.31 + headBob, 0, lean, 0.42, 0.62, 0.26);
     part(P.head, i, 0, TORSO_TOP + 0.13 + headBob, -0.01, lean * 0.5, 0.21, 0.24, 0.22);
     part(P.hat, i, 0, TORSO_TOP + 0.29 + headBob, -0.01, lean * 0.5, 0.23, 0.1, 0.235);
-    part(P.armL, i, -0.255, SHOULDER + headBob, 0, armA + armBase, 0.11, 0.62, 0.11);
-    part(P.armR, i, 0.255, SHOULDER + headBob, 0, armB + armBase, 0.11, 0.62, 0.11);
+    limb(P.armL, i, -0.265, SHOULDER + headBob, 0, armA, 0.11, 0.62, 0.11, -0.07);
+    limb(P.armR, i, 0.265, SHOULDER + headBob, 0, armB, 0.11, 0.62, 0.11, 0.07);
     // accessory
-    if (p.acc === 1) part(P.acc, i, 0.3, HIP + 0.02 - Math.cos(armB) * 0.12, -Math.sin(armB) * 0.5, armB, 0.22, 0.3, 0.11);
-    else if (p.acc === 2) part(P.acc, i, 0.27, SHOULDER - 0.34, -0.2, 0, 0.075, 0.11, 0.075);
+    if (p.acc === 1) part(P.acc, i, 0.3, SHOULDER - Math.cos(armB) * 0.62 - 0.1, -Math.sin(armB) * 0.62, armB, 0.22, 0.3, 0.11);
+    else if (p.acc === 2) part(P.acc, i, 0.3, SHOULDER - Math.cos(armB) * 0.6, -Math.sin(armB) * 0.6 - 0.05, 0, 0.075, 0.11, 0.075);
     else if (p.acc === 3) part(P.acc, i, 0.02, HIP + 0.28, -0.2, 0.15, 0.33, 0.92, 0.09, 0.55);
     else part(P.acc, i, 0, -50, 0, 0, 0.001, 0.001, 0.001);
   }
   function poseSeated(p) {
     const i = p.i, hip = 0.50;                 // sitting on a 0.44 m bistro chair
     setPose(p.x, p.y, p.z, p.yaw, 0, p.height);
-    part(P.legL, i, -0.11, hip, 0, 1.05, 0.15, 0.84, 0.19);
-    part(P.legR, i, 0.11, hip, 0, 1.05, 0.15, 0.84, 0.19);
+    limb(P.legL, i, -0.11, hip, 0, 1.05, 0.15, 0.84, 0.19);
+    limb(P.legR, i, 0.11, hip, 0, 1.05, 0.15, 0.84, 0.19);
     part(P.torso, i, 0, hip + 0.31, -0.02, 0.08, 0.42, 0.62, 0.26);
     part(P.head, i, 0, hip + 0.75, -0.04, 0.08, 0.21, 0.24, 0.22);
     part(P.hat, i, 0, hip + 0.91, -0.04, 0.08, 0.23, 0.1, 0.235);
-    part(P.armL, i, -0.255, hip + 0.56, 0, 0.85, 0.11, 0.56, 0.11);
-    part(P.armR, i, 0.255, hip + 0.56, 0, 0.85, 0.11, 0.56, 0.11);
-    if (p.acc === 2) part(P.acc, i, 0.2, hip + 0.36, -0.4, 0, 0.075, 0.11, 0.075);
+    limb(P.armL, i, -0.265, hip + 0.56, 0, 0.85, 0.11, 0.56, 0.11, -0.07);
+    limb(P.armR, i, 0.265, hip + 0.56, 0, 0.85, 0.11, 0.56, 0.11, 0.07);
+    if (p.acc === 2) part(P.acc, i, 0.28, hip + 0.56 - Math.cos(0.85) * 0.56, -Math.sin(0.85) * 0.56, 0, 0.075, 0.11, 0.075);
     else part(P.acc, i, 0, -50, 0, 0, 0.001, 0.001, 0.001);
   }
 

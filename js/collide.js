@@ -146,7 +146,7 @@ export class CollisionWorld {
     const ss = this.surfaces.query(pos.x - r, pos.z - r, pos.x + r, pos.z + r, this._tmp2);
     for (const s of ss) {
       if (y >= s.top - sideTol || y + 0.1 < s.bottom) continue;
-      if (s.kind === 'sidewalk' || s.kind === 'curb') continue; // rolled onto via stepUp instead
+      if (s.kind === 'sidewalk' || s.kind === 'curb' || s.kind === 'pad') continue; // rolled onto via stepUp instead
       const l = this._local(s, pos.x, pos.z, this._l);
       const hw = s.w / 2 + r, hd = s.d / 2 + r;
       if (Math.abs(l[0]) >= hw || Math.abs(l[1]) >= hd) continue;

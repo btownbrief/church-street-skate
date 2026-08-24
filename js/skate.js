@@ -103,7 +103,8 @@ export class Skater {
   // ---- RIDE / MANUAL ------------------------------------------------------------
   stepRide(dt, inp, ev, manual) {
     const cw = this.cw, p = this.pos, v = this.vel;
-    const onStairs = this.groundKind === 'stairs';
+    // stairs and skate ramps climb faster than the default stepUp allows per substep
+    const onStairs = this.groundKind === 'stairs' || this.groundKind === 'ramp' || this.groundKind === 'quarter';
     const g = _g; g.kind = this.groundKind; g.ny = this.normal.y; g.nx = this.normal.x; g.nz = this.normal.z;
     // gravity along slope (previous support normal)
     const gx = CFG.gravity * g.ny * g.nx, gz = CFG.gravity * g.ny * g.nz;
@@ -129,7 +130,13 @@ export class Skater {
         v.addScaledVector(_f, CFG.pushImpulse * (0.5 + 0.7 * scale)); this.pushTimer = CFG.pushInterval; this.pushAnim = 1; this.emit('push');
       }
     } else if (inp.throttle < -0.3 && !manual) {
-      const dec = CFG.brakeDecel * -inp.throttle * dt; const s2 = v.length(); if (s2 > 0) { const ns = Math.max(0, s2 - dec); v.multiplyScalar(ns / s2); } if (!this.braking) { this.braking = true; this.emit('brake'); }
+      if (along > 0.6) {
+        const dec = CFG.brakeDecel * -inp.throttle * dt; const s2 = v.length(); if (s2 > 0) { const ns = Math.max(0, s2 - dec); v.multiplyScalar(ns / s2); } if (!this.braking) { this.braking = true; this.emit('brake'); }
+      } else {
+        // held past the stop: push fakie
+        this.braking = false;
+        if (-along < CFG.maxReverseSpeed && !this.charging) v.addScaledVector(_f, CFG.reverseAccel * inp.throttle * dt);
+      }
     } else this.braking = false;
     // rolling friction (more on grass/brick)
     const fr = CFG.rollFriction * (g.kind === 'grass' ? 6 : g.kind === 'brick' ? 1.3 : 1);
@@ -143,6 +150,19 @@ export class Skater {
     const drop = p.y - g.y;
     if (drop > 0.32) { // rolled off something
       if (manual) { const m = this.manual; this.addTrickPending({ name: m.nose ? 'Nose Manual' : 'Manual', pts: CFG.score.manualBase + CFG.score.manualPerSec * m.time }); this.manual = null; this.balance = 0; }
+      // Launch: rolling uphill off an edge converts roll speed into vertical pop, energy
+      // conserved (kickers boot you forward, quarter pipes send you nearly straight up).
+      const n = this.normal;
+      if (n.y > 0.2) {
+        const vyL = -(v.x * n.x + v.z * n.z) / n.y;
+        if (vyL > 1.2) {
+          const sp0 = Math.hypot(v.x, v.z);
+          v.y = vyL;
+          v.multiplyScalar(sp0 / Math.hypot(sp0, vyL));
+          if (this.groundKind === 'quarter') { v.x *= 0.28; v.z *= 0.28; } // vert lip: go UP, hang, come back in
+          this.emit('launch', { vy: v.y, kind: this.groundKind });
+        }
+      }
       this.state = 'air'; this.onGround = false; this.airTime = 0; this.airPeak = p.y; this.spinAccum = 0; this.yawVel = 0; this.flip = null;
       return;
     }
@@ -227,7 +247,13 @@ export class Skater {
     // grind snap
     if (v.y < 0.25 && this.grindCooldown <= 0 && (v.x * v.x + v.z * v.z) > 1.0) {
       const e = cw.nearestEdge(p.x, p.y, p.z, CFG.grindSnapDist, CFG.grindSnapAbove, CFG.grindSnapBelow, this._e || (this._e = {}));
-      if (e && e.edge !== this.lastEdge) { this.startGrind(e, inp); return; }
+      if (e && e.edge !== this.lastEdge) {
+        // Plummeting ACROSS an edge (fast fall, no speed along it) must not magnet the
+        // skater into a sideways boardslide — that read as a landing glitch on big jumps.
+        const ed = e.edge, ax2 = (ed.bx - ed.ax) / ed.len, az2 = (ed.bz - ed.az) / ed.len;
+        const along = Math.abs(v.x * ax2 + v.z * az2);
+        if (along > 2.0 || v.y > -7) { this.startGrind(e, inp); return; }
+      }
     }
     // landing
     if (v.y <= 0) {
@@ -239,11 +265,16 @@ export class Skater {
 
   land(g, inp) {
     const v = this.vel; this.normal.set(g.nx, g.ny, g.nz); this.groundKind = g.kind; this.groundObj = g.obj;
+    // Project the full 3D landing velocity onto the ground plane: a big drop onto a hill or
+    // a quarter face turns into roll speed instead of being discarded with vel.y.
+    const ndot = v.x * g.nx + v.y * g.ny + v.z * g.nz;
+    let vpx = v.x - g.nx * ndot, vpz = v.z - g.nz * ndot;
+    { const hs = Math.hypot(vpx, vpz); if (hs > 28) { vpx *= 28 / hs; vpz *= 28 / hs; } }
     // finish pending spin
     const half = Math.round(Math.abs(this.spinAccum) / Math.PI);
     let bail = null;
     if (this.flip && this.flip.t < this.flip.dur * 0.82) bail = 'flip';
-    const vy2 = yawOf(v.x, v.z); const sp = Math.hypot(v.x, v.z);
+    const vy2 = yawOf(vpx, vpz); const sp = Math.hypot(vpx, vpz);
     let d = Math.abs(angleDiff(this.yaw, vy2)); d = Math.min(d, Math.PI - d); // board is symmetric
     if (sp > 2 && d > CFG.landTolerance) bail = bail || 'spin';
     if (bail) { this.startBail(bail); return; }
@@ -253,8 +284,15 @@ export class Skater {
     if (this.grab) { if (this.grab.t > 0.2) this.addTrickPending({ name: this.grab.name, pts: 70 + 60 * this.grab.t }); this.grab = null; }
     const height = this.airPeak - this.pos.y;
     if (this.airTime > 1.1 || height > 2.2) this.addTrickPending({ name: height > 2.2 ? 'Big Drop' : 'Big Air', pts: CFG.score.bigAir + Math.round(height * 40) });
-    // snap yaw to travel axis softly
-    const target = d < Math.PI / 4 ? vy2 : vy2 + Math.PI; this.yaw = wrapAngle(target + angleDiff(this.yaw, target) * 0.35);
+    // snap yaw to the NEARER end of the travel axis (coming back down a quarter you land
+    // fakie — the board must not slew 180° to chase the velocity direction)
+    const target = Math.abs(angleDiff(this.yaw, vy2)) <= Math.PI / 2 ? vy2 : vy2 + Math.PI;
+    this.yaw = wrapAngle(target + angleDiff(this.yaw, target) * 0.35);
+    // Momentum follows the board: rotate the landed velocity onto the board's axis instead
+    // of letting the carve grip scrub the off-axis part (that killed speed on big airs).
+    fwd(this.yaw, _f);
+    const sgn = (vpx * _f.x + vpz * _f.z) >= 0 ? 1 : -1;
+    v.x = _f.x * sp * sgn; v.z = _f.z * sp * sgn;
     v.y = 0; this.yawVel = 0; this.spinAccum = 0; this.state = 'ride'; this._landedAt = this.t; this.sketchy = d > CFG.landTolerance * 0.6 ? 1 : 0;
     this.emit('land', { sketchy: this.sketchy, speed: sp, height });
     this.lastEdge = null;

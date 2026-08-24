@@ -32,6 +32,7 @@ export async function buildWorld({ scene, renderer, camera, quality }) {
   const city = await tryImport('./city.js'); if (city && city.buildCity) city.buildCity(ctx);
   if (landmarks && landmarks.buildLandmarks) landmarks.buildLandmarks(ctx);
   const props = await tryImport('./props.js'); if (props && props.buildProps) props.buildProps(ctx);
+  const park = await tryImport('./skatepark.js'); if (park && park.buildSkatepark) park.buildSkatepark(ctx);
   const npcs = await tryImport('./npcs.js'); if (npcs && npcs.createNpcs) npcs.createNpcs(ctx);
   const traffic = await tryImport('./traffic.js'); if (traffic && traffic.createTraffic) traffic.createTraffic(ctx);
   if (!dataMod) testCourse(ctx);
