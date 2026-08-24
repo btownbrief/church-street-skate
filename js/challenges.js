@@ -18,6 +18,12 @@ export class Challenges {
       { id: 'bigjoe', name: "Grind Big Joe's slab", hint: 'the top block, in front of 16 Church' },
       { id: 'combo', name: 'Bank a 10,000-point combo', hint: 'link grinds, manuals and flips before you settle' },
       { id: 'spots', name: 'Find every Burlington spot', hint: 'the yellow dots on the map' },
+      // ---- feature wave 2 ----
+      { id: 'letters', name: 'Collect B-T-O-W-N', hint: 'five floating letters, a new route every week' },
+      { id: 'gap5', name: 'Clear 5 named gaps', hint: 'the gap list is in the pause menu' },
+      { id: 'wreck', name: 'Score a 1,000-point wreck', hint: 'speed, height and tumble all count — Hall of Meat' },
+      { id: 'special', name: 'Land The Maple Leaf', hint: 'both flip buttons together, in the air, meter full' },
+      { id: 'bluff', name: 'Survive the Bluff Bomber', hint: 'roll in off the Battery Park tower and land the Lake Leap' },
     ];
     let saved = [];
     try { saved = JSON.parse(storeGet(KEY, '[]')); } catch { saved = []; }
@@ -26,6 +32,7 @@ export class Challenges {
     this._manual = 0;                   // metres of the current manual
     this._college = null;               // { minX } while a clean College run is live
     this._prev = { x: skater.pos.x, z: skater.pos.z };
+    this._gaps = new Set();             // distinct named gaps cleared this session
   }
 
   get remaining() { return this.list.length - this.list.filter(c => this.done.has(c.id)).length; }
@@ -50,6 +57,20 @@ export class Challenges {
       case 'bank':
         if (ev.total >= 10000) this.complete('combo');
         if (sk.groundKind === 'brick' && ev.tricks.some(t => /360 Flip/.test(t))) this.complete('tre');
+        // "Landed" means banked, not merely started: the trick event fires the moment the
+        // flip completes, which can still be followed by a bail.
+        if (ev.tricks.some(t => /Maple Leaf/.test(t))) this.complete('special');
+        break;
+      case 'gap':
+        this._gaps.add(ev.name);
+        if (this._gaps.size >= 5) this.complete('gap5');
+        if (ev.name === 'Lake Leap') this.complete('bluff');
+        break;
+      case 'wreck':
+        if (ev.score >= 1000) this.complete('wreck');
+        break;
+      case 'letters':
+        this.complete('letters');
         break;
       case 'bail':
         this._college = null; this._manual = 0;

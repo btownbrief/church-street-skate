@@ -32,7 +32,11 @@
     <h1>Church Street<br>Skate</h1>
     <p class="sub">Four blocks of brick, the hill down to the lake, City Hall steps, the planters everybody grinds anyway.</p>
     <p class="fineprint">Burlington ordinance §27-18: skateboarding on the bricks is, technically, a trespass. The traveled portions of College, Bank and Cherry are exempt. Good luck.</p>
-    <button id="btn-play" class="primary">Skate</button>
+    <div class="modes">
+      <button id="btn-play" class="primary">Free skate</button>
+      <button id="btn-run" class="primary alt">2-minute run</button>
+    </div>
+    <p class="modenote">Free skate is the whole downtown, no clock. A 2-minute run scores one timed lap for the monthly leaderboard.</p>
     <div id="how" class="how"></div>
     <div id="loading" class="loading">Building Burlington…</div>
     <div class="fine">Map data © OpenStreetMap contributors · Elevation USGS 3DEP · Original low-poly art</div>
@@ -43,10 +47,39 @@
     <h2>Paused</h2>
     <div id="stats"></div>
     <div class="row"><button id="btn-resume" class="primary">Resume</button><button id="btn-respawn">Back to Church St</button><button id="btn-mute">Sound: on</button></div>
-    <h3 class="secttl">Burlington spots</h3>
-    <div id="spots-list" class="spots"></div>
+    <div class="panes">
+      <div class="pane">
+        <h3 class="secttl">Burlington spots</h3>
+        <div id="spots-list" class="spots one"></div>
+      </div>
+      <div class="pane">
+        <h3 class="secttl">Named gaps <span id="gaps-count"></span></h3>
+        <div id="gaps-list" class="spots one"></div>
+      </div>
+    </div>
     <h3 class="secttl">Challenges</h3>
     <div id="chal-list" class="chals"></div>
+  </div>
+</div>
+<div id="screen-results" class="screen">
+  <div class="card small">
+    <div class="eyebrow">2-minute run</div>
+    <h2 id="res-score">0</h2>
+    <div id="res-stats"></div>
+    <div class="lb hidden" id="lb">
+      <div class="lb-tabs">
+        <button class="lb-chip sel" id="lbThisBtn">🏆 THIS MONTH</button>
+        <button class="lb-chip" id="lbLastBtn">LAST MONTH</button>
+      </div>
+      <div class="lb-status" id="lbStatus"></div>
+      <ol id="lbList"></ol>
+      <div class="lb-form hidden" id="lbForm">
+        <input id="lbNameInput" maxlength="20" placeholder="Your name" autocomplete="off" />
+        <button class="lb-chip" id="lbSaveBtn">SAVE</button>
+      </div>
+      <button class="lb-chip lb-rename hidden" id="lbRenameBtn">✏️ CHANGE NAME</button>
+    </div>
+    <div class="row"><button id="btn-again" class="primary">Skate again</button><button id="btn-free">Free skate</button></div>
   </div>
 </div>
 <script type="module" src="js/main.js"></script>
