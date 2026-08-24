@@ -40,7 +40,7 @@ let mode = 'free', runLeft = 0, runOver = false, frozen = false;
 let autopilot = null, evTap = null;   // headless-playtest hooks (js/devhooks.js)
 
 const how = touch
-  ? `<b>Left side</b>: drag to steer, push up to skate · <b>OLLIE</b> hold &amp; release for height · <b>FLIP</b>/<b>SHOVE</b> in the air (both = 360 flip) · steer in the air to spin · land on ledges &amp; rails to grind, steer to balance · <b>GRAB</b> in the air, hold it through the landing to manual`
+  ? `<b>Left side</b>: drag to steer, push up to skate · <b>OLLIE</b> hold &amp; release for height · <b>FLIP</b>/<b>SHOVE</b> in the air (both = 360 flip) · steer in the air to spin · land on ledges &amp; rails to grind, steer to balance · <b>GRAB</b> in the air, hold it through the landing to manual · prefer flicking? Pause → <b>Tricks: flick pad</b> — pull back &amp; flick up to ollie, ↖ kickflip, ↗ heelflip, ←/→ shove-it, two fingers = signature`
   : `<kbd>W/↑</kbd> push · <kbd>S/↓</kbd> brake · <kbd>A/D</kbd> steer (and spin in the air) · <kbd>Space</kbd> hold &amp; release to ollie · <kbd>J</kbd> kickflip · <kbd>K</kbd> heelflip · <kbd>L</kbd> shove-it (<kbd>J</kbd>+<kbd>L</kbd> = 360 flip) · <kbd>Shift</kbd> grab in the air, hold it through the landing to manual (with <kbd>S</kbd> = nose manual) · land on a ledge or rail to grind, steer to balance · <kbd>C</kbd> camera · <kbd>M</kbd> map · <kbd>R</kbd> respawn · <kbd>P</kbd> pause`;
 $('#how').innerHTML = how;
 
@@ -60,6 +60,7 @@ async function boot() {
   hud.letters = world.letters || null;
   hud.el.btnPause.addEventListener('click', () => setPaused(true));
   input.bindTouch({ stickZone: $('#stick-zone'), stickKnob: $('#stick-knob'), buttons: { ollie: $('#b-ollie'), flipA: $('#b-flip'), shove: $('#b-shove'), grab: $('#b-grab') } });
+  input.bindFlickPad({ zone: $('#flick-zone'), knob: $('#flick-knob') });
   $('#loading').textContent = `Downtown loaded — ${world.stats}`;
   $('#btn-play').disabled = false;
   renderer.render(scene, camera);
@@ -115,6 +116,18 @@ $('#btn-free').addEventListener('click', () => start('free'));
 $('#btn-resume').addEventListener('click', () => setPaused(false));
 $('#btn-respawn').addEventListener('click', () => { const sp = world.spawn; skater.respawn(sp.x, sp.y, sp.z, sp.yaw); follow.reset(skater); locTimer = 0; setPaused(false); });
 $('#btn-mute').addEventListener('click', () => { $('#btn-mute').textContent = 'Sound: ' + (audio.toggleMute() ? 'off' : 'on'); });
+// FLICK PAD toggle (touch only — the button is display:none on desktop). Persisted so a
+// player who prefers it gets it back next session. Keyboard and gamepad are untouched.
+let flickMode = touch && storeGet('css-flick') === '1';
+const applyFlick = () => {
+  document.body.classList.toggle('flick', flickMode);
+  $('#btn-flick').textContent = 'Tricks: ' + (flickMode ? 'flick pad' : 'buttons');
+  $('#hint').innerHTML = flickMode
+    ? '<b>Push</b> — flick the left stick up · <b>Ollie</b> — pull back on the pad, flick up'
+    : '<b>Push</b> — flick the stick up · <b>OLLIE</b> — hold, then let go';
+};
+applyFlick();
+$('#btn-flick').addEventListener('click', () => { flickMode = !flickMode; storeSet('css-flick', flickMode ? '1' : '0'); applyFlick(); });
 window.addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 renderer.setSize(innerWidth, innerHeight);
 document.addEventListener('visibilitychange', () => { if (document.hidden && running && !paused) setPaused(true); });

@@ -77,6 +77,21 @@ body.touch #speed { left:auto; right:14px; top:calc(64px + var(--safe-t)); botto
 #stick-zone.on #stick-base { opacity:1; }
 #stick-knob { position:absolute; left:50%; top:50%; width:56px; height:56px; margin:-28px 0 0 -28px; border-radius:50%; background:rgba(255,255,255,.7); box-shadow:0 4px 12px rgba(0,0,0,.4); }
 #buttons { position:absolute; right:16px; bottom:calc(22px + var(--safe-b)); width:46%; height:48%; pointer-events:none; }
+/* Flick pad (opt-in, pause menu): replaces the OLLIE/FLIP/SHOVE buttons with a SKATE-style
+   flick surface on the right half. GRAB survives — grabs, manuals and grind flavours need it. */
+#flick-zone { position:absolute; right:0; top:30%; bottom:0; width:46%; pointer-events:auto; display:none; }
+body.touch.flick #flick-zone { display:block; }
+body.touch.flick #b-ollie, body.touch.flick #b-flip, body.touch.flick #b-shove { display:none; }
+body.touch.flick #b-grab { right:10px; bottom:auto; top:-64px; }
+#flick-base { position:absolute; left:64%; top:56%; width:132px; height:132px; margin:-66px 0 0 -66px; border-radius:50%; border:2px solid rgba(255,255,255,.25); background:rgba(255,255,255,.06); opacity:.5; transition:opacity .15s; }
+#flick-zone.on #flick-base { opacity:1; }
+#flick-knob { position:absolute; left:50%; top:50%; width:48px; height:48px; margin:-24px 0 0 -24px; border-radius:50%; background:rgba(255,216,77,.75); box-shadow:0 4px 12px rgba(0,0,0,.4); }
+.fl { position:absolute; font-size:9px; font-weight:800; letter-spacing:.08em; opacity:.75; color:#fff; transform:translate(-50%,-50%); pointer-events:none; }
+.fl-n { left:50%; top:-12px; } .fl-s { left:50%; bottom:-22px; top:auto; }
+.fl-nw { left:8px; top:6px; } .fl-ne { right:8px; left:auto; top:6px; transform:translate(50%,-50%); }
+.fl-w { left:-16px; top:50%; } .fl-e { right:-16px; left:auto; top:50%; transform:translate(50%,-50%); }
+body:not(.touch) #btn-flick { display:none; }
+
 .tb { pointer-events:auto; position:absolute; border-radius:50%; border:2px solid rgba(255,255,255,.3); background:rgba(20,28,40,.55); color:#fff; font-weight:900; font-size:13px; letter-spacing:.04em; width:66px; height:66px; user-select:none; -webkit-user-select:none; backdrop-filter: blur(4px); }
 .tb.down { background:rgba(255,216,77,.85); color:#222; transform:scale(.94); }
 .tb.big { width:96px; height:96px; font-size:16px; right:8px; bottom:8px; background:rgba(181,85,47,.75); }
