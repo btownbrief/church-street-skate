@@ -14,6 +14,12 @@ const WALK_KINDS = ['primary', 'secondary', 'tertiary', 'residential', 'unclassi
 const GREEN_KINDS = ['leisure:park', 'landuse:grass', 'landuse:cemetery', 'natural:wood', 'leisure:garden',
   'landuse:recreation_ground', 'leisure:common', 'leisure:playground', 'landuse:village_green',
   'landuse:religious', 'amenity:school', 'amenity:college', 'landuse:education', 'landuse:residential'];
+// landuse=residential is a *zoning* polygon: block-sized, and it contains the streets and the
+// houses as well as the lawns. Draping it as a lawn plate spread green over every road inside it.
+// The terrain's own land-cover raster already tints those cells green (paintCover), underneath
+// the asphalt where it can never bleed, so the plate was pure downside — colour spill plus tens
+// of thousands of triangles. Same for the campus/school polygons, which swallow their own drives.
+const NO_DRAPE = ['landuse:residential', 'amenity:college', 'amenity:school', 'landuse:education'];
 
 // land-cover codes baked into the terrain vertex colours
 const CV = { URBAN: 0, GREEN: 1, WATER: 2, DIRT: 3, PAVED: 4 };
@@ -96,13 +102,21 @@ export function buildGround(ctx) {
   const LX1 = LX0 + nx * gs, LZ1 = LZ0 + nz * gs;
   const H = (i, j) => terrain.raw(clamp(i, 0, nx) * stride, clamp(j, 0, nz) * stride);
 
-  // height of the *rendered* surface — exactly what the terrain mesh interpolates,
-  // so draped ribbons never sink into it.
+  // Height of the *rendered* terrain surface at (x,z).
+  //
+  // This must be the TRIANGULATED height, not the bilinear one. buildTerrain splits every
+  // 5 m cell along the (i+1,j)–(i,j+1) diagonal; a bilinear sample of the same four corners
+  // differs from that plane by up to a quarter of the cell's twist, which on Burlington's
+  // hills is 10–30 cm — far more than the 3–7 cm a road, kerb or lawn plate is lifted by.
+  // That mismatch is what pushed raw terrain and lawn green up through the asphalt.
   function gridH(x, z) {
     const fx = clamp((x - LX0) / gs, 0, nx - 1e-6), fz = clamp((z - LZ0) / gs, 0, nz - 1e-6);
     const i = Math.floor(fx), j = Math.floor(fz), u = fx - i, v = fz - j;
     const h00 = H(i, j), h10 = H(i + 1, j), h01 = H(i, j + 1), h11 = H(i + 1, j + 1);
-    return (h00 * (1 - u) + h10 * u) * (1 - v) + (h01 * (1 - u) + h11 * u) * v;
+    // lower-left triangle (h00,h10,h01) vs upper-right triangle (h10,h11,h01)
+    return (u + v <= 1)
+      ? h00 + (h10 - h00) * u + (h01 - h00) * v
+      : h11 + (h01 - h11) * (1 - u) + (h10 - h11) * (1 - v);
   }
 
   // On mobile the mesh is half resolution, so resample the heightmap itself onto that
@@ -115,12 +129,7 @@ export function buildGround(ctx) {
     }
     terrain.h = out;
   }
-  function latticeH(x, z) {
-    const fx = clamp((x - LX0) / gs, 0, nx - 1e-6), fz = clamp((z - LZ0) / gs, 0, nz - 1e-6);
-    const i = Math.floor(fx), j = Math.floor(fz), u = fx - i, v = fz - j;
-    const h00 = H(i, j), h10 = H(i + 1, j), h01 = H(i, j + 1), h11 = H(i + 1, j + 1);
-    return (h00 * (1 - u) + h10 * u) * (1 - v) + (h01 * (1 - u) + h11 * u) * v;
-  }
+  function latticeH(x, z) { return gridH(x, z); }
 
   const cover = new Uint8Array((nx + 1) * (nz + 1));
   paintCover(cover, WORLD, nx, nz, gs, LX0, LZ0);
@@ -157,12 +166,16 @@ export function buildGround(ctx) {
   const lam = (o) => new THREE.MeshLambertMaterial({ vertexColors: true, ...o });
   const off = (f) => ({ polygonOffset: true, polygonOffsetFactor: f, polygonOffsetUnits: f });
 
-  add(B.asphalt, lam(off(-1)), false, 'asphalt');
-  add(B.brick, lam({ map: brickTexture(), ...off(-1) }), false, 'brick');
-  add(B.dirt, lam(off(-1)), false, 'dirt');
+  // Depth-priority stack for the coplanar ground plates, nearest-wins first:
+  //   paint −5 · stone −3 · concrete −2 · asphalt/brick −1.6 · lawn/dirt −0.8 · terrain +1
+  // Ground cover must never out-depth the road it is drawn beside, and raw terrain must
+  // never out-depth anything laid on it.
+  add(B.asphalt, lam(off(-1.6)), false, 'asphalt');
+  add(B.brick, lam({ map: brickTexture(), ...off(-1.6) }), false, 'brick');
+  add(B.dirt, lam(off(-0.8)), false, 'dirt');
   // stone (curb faces, stair risers, wall + hedge sides, fence posts) and hedges are thin
   // plates seen from either side
-  add(B.green, lam({ side: THREE.DoubleSide, ...off(-1) }), false, 'green');
+  add(B.green, lam({ side: THREE.DoubleSide, ...off(-0.8) }), false, 'green');
   add(B.concrete, lam(off(-2)), false, 'concrete');
   add(B.stone, lam({ side: THREE.DoubleSide, ...off(-3) }), true, 'stone');
   add(B.paint, lam(off(-5)), false, 'paint');
@@ -215,7 +228,9 @@ function buildTerrain(scene, cover, nx, nz, gs, LX0, LZ0, H, rnd, mobile) {
     [CV.URBAN]: C(0x8f8a80), [CV.GREEN]: C(0x6f8a4a), [CV.WATER]: C(0x51707f),
     [CV.DIRT]: C(0x7a6a55), [CV.PAVED]: C(0x6d6b67),
   };
-  const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+  // pushed one unit *away* from the eye so a coplanar road/lawn/brick plate always wins the
+  // depth test even where the two surfaces meet exactly
+  const mat = new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
   const CH = 3;
   for (let cj = 0; cj < CH; cj++) for (let ci = 0; ci < CH; ci++) {
     const i0 = Math.floor(ci * nx / CH), i1 = Math.floor((ci + 1) * nx / CH);
@@ -384,12 +399,20 @@ function buildStreets(ctx, B, gridH, near, rnd) {
       const ya = gridH(a[0], a[1]) + layer, yb = gridH(b[0], b[1]) + layer;
       const tone = 0.9 + 0.2 * (((hashStr(r.id + ':' + i) >>> 6) & 255) / 255);
       const col = [base[0] * tone, base[1] * tone, base[2] * tone];
-      // asphalt quad
-      B.asphalt.quad(
-        [a[0] + na[0] * hw, ya, a[1] + na[1] * hw],
-        [b[0] + nb[0] * hw, yb, b[1] + nb[1] * hw],
-        [b[0] - nb[0] * hw, yb, b[1] - nb[1] * hw],
-        [a[0] - na[0] * hw, ya, a[1] - na[1] * hw], col);
+      // Asphalt, draped across the width rather than spanned flat. One quad per segment is a
+      // plane through four corners up to 12 m apart; the terrain between them is piecewise-planar
+      // on a 5 m lattice and pushes straight through it on a crowned or side-sloping street.
+      // Splitting the width into ~2.5 m strips, each corner sampled on the terrain, keeps the
+      // asphalt on the ground for the cost of a few triangles.
+      const strips = (w < 6) ? 1 : (mobile ? 2 : 3);   // an alley is already narrower than a terrain cell
+      for (let k = 0; k < strips; k++) {
+        const f0 = hw - (2 * hw) * k / strips, f1 = hw - (2 * hw) * (k + 1) / strips;
+        const A = [a[0] + na[0] * f0, 0, a[1] + na[1] * f0]; A[1] = gridH(A[0], A[2]) + layer;
+        const Bp = [b[0] + nb[0] * f0, 0, b[1] + nb[1] * f0]; Bp[1] = gridH(Bp[0], Bp[2]) + layer;
+        const Cp = [b[0] + nb[0] * f1, 0, b[1] + nb[1] * f1]; Cp[1] = gridH(Cp[0], Cp[2]) + layer;
+        const Dp = [a[0] + na[0] * f1, 0, a[1] + na[1] * f1]; Dp[1] = gridH(Dp[0], Dp[2]) + layer;
+        B.asphalt.quad(A, Bp, Cp, Dp, col);
+      }
 
       // ---- paint
       const mx = (a[0] + b[0]) / 2, mz = (a[1] + b[1]) / 2, my = (ya + yb) / 2 + 0.004;
@@ -510,12 +533,19 @@ function drape(tris, pts, gridH, lift, colFn, maxEdge = 9, flatY = null) {
   let faces;
   try { faces = THREE.ShapeUtils.triangulateShape(contour, []); } catch (e) { return; }
   const Y = (x, z) => (flatY != null ? flatY : gridH(x, z) + lift);
+  // A draped triangle only samples the terrain at its corners, so a long edge crossing a
+  // ridge or a hollow leaves the plate floating over (or sunk under) the ground between them.
+  // Split when the edge is long OR when its midpoint has drifted more than a plate thickness
+  // from the true surface, so flat ground stays cheap and broken ground gets the triangles.
+  const SAG = 0.05;
+  const sags = (a, b) => Math.abs(Y((a[0] + b[0]) / 2, (a[1] + b[1]) / 2) - (Y(a[0], a[1]) + Y(b[0], b[1])) / 2) > SAG;
   const emit = (a, b, c, depth) => {
     const ab = Math.hypot(a[0] - b[0], a[1] - b[1]);
     const bc = Math.hypot(b[0] - c[0], b[1] - c[1]);
     const ca = Math.hypot(c[0] - a[0], c[1] - a[1]);
     const m = Math.max(ab, bc, ca);
-    if (m > maxEdge && depth < 5 && flatY == null) {
+    const bent = depth < 6 && flatY == null && m > 1.6 && (sags(a, b) || sags(b, c) || sags(c, a));
+    if ((bent || m > maxEdge) && depth < 6 && flatY == null) {
       if (m === ab) { const p = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; emit(a, p, c, depth + 1); emit(p, b, c, depth + 1); }
       else if (m === bc) { const p = [(b[0] + c[0]) / 2, (b[1] + c[1]) / 2]; emit(a, b, p, depth + 1); emit(a, p, c, depth + 1); }
       else { const p = [(c[0] + a[0]) / 2, (c[1] + a[1]) / 2]; emit(a, b, p, depth + 1); emit(p, b, c, depth + 1); }
@@ -555,6 +585,7 @@ function buildAreas(ctx, B, gridH, near) {
       drape(B.dirt, a.pts, gridH, 0.03, shade(DIRT, 0.2), 12);
       if (a.name) fenceLine(ctx, B, gridH, [...a.pts, a.pts[0]], 1.9, 'Construction fence');
     } else if (GREEN_KINDS.includes(a.kind)) {
+      if (NO_DRAPE.includes(a.kind)) continue;      // zoning polygons — terrain colour only
       drape(B.green, a.pts, gridH, 0.025, shade(GRASS, 0.16), 9);
     } else if (a.kind === 'highway:pedestrian' || a.kind === 'leisure:common') {
       drape(B.concrete, a.pts, gridH, 0.03, shade(PAVED, 0.12), 9);
