@@ -7,6 +7,8 @@ export const CFG = {
   rollFriction: 0.18,      // m/s^2 deceleration
   airDrag: 0.02,
   brakeDecel: 7,
+  reverseAccel: 3.6,       // m/s^2 pushing fakie (hold brake past a stop)
+  maxReverseSpeed: 7,
   gravity: 17,             // a bit heavier than earth for snappy feel
   turnRate: 2.6,           // rad/s at low speed
   turnRateHighSpeed: 1.5,
