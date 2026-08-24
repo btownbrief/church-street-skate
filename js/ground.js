@@ -239,6 +239,21 @@ function paintCover(cover, WORLD, nx, nz, gs, LX0, LZ0) {
     else if (a.kind === 'landuse:construction') stamp(a.pts, CV.DIRT);
   }
   for (const a of WORLD.areas || []) if (a.kind === 'natural:water') stamp(a.pts, CV.WATER);
+
+  // The terrain grid carries a ~25 m margin outside the data bbox that no land-use polygon
+  // can reach, so the whole outer rim of the map — including the top of Battery Park's bluff,
+  // which the player looks straight along — rendered as bare tan. Extend the land cover
+  // outward from the first row/column that has one.
+  const M = Math.max(2, Math.round(26 / gs));
+  const at = (i, j) => cover[j * (nx + 1) + i];
+  for (let j = 0; j <= nz; j++) for (let i = 0; i < M; i++) {
+    cover[j * (nx + 1) + i] = at(M, j);
+    cover[j * (nx + 1) + nx - i] = at(nx - M, j);
+  }
+  for (let i = 0; i <= nx; i++) for (let j = 0; j < M; j++) {
+    cover[j * (nx + 1) + i] = at(i, M);
+    cover[(nz - j) * (nx + 1) + i] = at(i, nz - M);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -291,7 +306,7 @@ function buildTerrain(scene, cover, nx, nz, gs, LX0, LZ0, H, rnd, mobile) {
 function buildSkirt(scene, nx, nz, gs, LX0, LZ0, H) {
   const OUT = 1400, SHORE = 16;
   const t = new Tris();
-  const c = C(0x7d786f), cw = C(0x51707f), shingle = C(0x6d6a63);
+  const c = C(0x7d786f), cw = C(0x51707f), shingle = C(0x6d6a63), bluff = C(0x5c6647);
   const ptH = (i, j) => { const h = H(i, j); return h < -25 ? -34.8 : h; };
   const colFor = (h) => (h <= -34 ? cw : c);
   // Where the apron falls to the lake it now does so over ~26 m and then runs flat, instead of
@@ -305,7 +320,10 @@ function buildSkirt(scene, nx, nz, gs, LX0, LZ0, H) {
     const A = [ax, H(ai, aj), az], Bp = [bx, H(bi, bj), bz];
     const As = [ax + sx, ah, az + sz], Bs = [bx + sx, bh, bz + sz];
     const Ao = [ax + ox, ah, az + oz], Bo = [bx + ox, bh, bz + oz];
-    t.quad(A, As, Bs, Bp, wet ? shingle : c);
+    // A short drop is beach shingle; the long drop off Battery Park's bluff is a wooded
+    // bank, and rendering that as sand made the north shore look like a desert cliff.
+    const drop = Math.max(H(ai, aj) - ah, H(bi, bj) - bh);
+    t.quad(A, As, Bs, Bp, wet ? (drop > 8 ? bluff : shingle) : c);
     t.quad(As, Ao, Bo, Bs, colFor(ah));
   };
   for (let i = 0; i < nx; i++) { edge(i + 1, 0, i, 0, 0, -OUT); edge(i, nz, i + 1, nz, 0, OUT); }
