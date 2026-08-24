@@ -223,6 +223,13 @@ function paintCover(cover, WORLD, nx, nz, gs, LX0, LZ0) {
       if (pointInPoly(x, z, pts)) cover[j * (nx + 1) + i] = code;
     }
   };
+  // Commercial / retail / industrial land is yard, lot and hardstanding, not bare earth.
+  // Stamped into the terrain's own vertex colour rather than draped, so it can never bleed
+  // onto a road, and costs nothing: it just stops whole downtown blocks and the rail yard
+  // behind Lake Street reading as an unpaved tan void between the buildings.
+  for (const a of WORLD.areas || []) {
+    if (['landuse:commercial', 'landuse:retail', 'landuse:industrial', 'landuse:brownfield'].includes(a.kind)) stamp(a.pts, CV.PAVED);
+  }
   for (const a of WORLD.areas || []) {
     if (GREEN_KINDS.includes(a.kind)) stamp(a.pts, CV.GREEN);
   }
