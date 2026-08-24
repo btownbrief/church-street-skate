@@ -519,6 +519,107 @@ checks.flickpad = async () => {
   report('abandoned charge cancels without a pop', r.cancel.state === 'ride' && r.cancel.pops === 0, JSON.stringify(r.cancel));
 };
 
+checks.funpass = async () => {
+  const r = await ev(() => {
+    const out = {};
+    // 1. backflip: fresh press of back in the air scores; held through takeoff doesn't.
+    // (−476 westward: the College drop-in now occupies the corridor's east end at −440.)
+    window.__tp(-476, 10, Math.PI / 2, 8);
+    window.__recOn();
+    window.__sim(0.45, ['Space']); window.__sim(0.15); window.__sim(0.7, ['ArrowDown']); window.__sim(1.2);
+    out.backflip = window.__rec.filter(e => e.type === 'trick').map(e => e.name).join('|');
+    out.backflipState = window.__dbg().state;
+    window.__recOff();
+    // 2. stomp: a big clean drop pays a speed boost + the event
+    window.__air(-440, -8, 10, -Math.PI / 2, -9, 0, 0);
+    window.__recOn();
+    let spBefore = 9;
+    window.__sim(1.6);
+    const st = window.__rec.find(e => e.type === 'stomp');
+    out.stomp = st ? { got: true, speed: +st.speed.toFixed(1) } : { got: false };
+    out.stompFaster = window.__dbg().state === 'ride' && Math.hypot(window.__dbg().vel[0], window.__dbg().vel[2]) > spBefore;
+    window.__recOff();
+    // 3. trick tape rows appear and carry the trick name
+    window.__tp(-476, 10, Math.PI / 2, 8);
+    window.__sim(0.4, ['Space']); window.__sim(0.06, ['KeyJ']); window.__sim(1.2);
+    const tape = document.querySelector('#tape');
+    out.tape = tape ? tape.textContent : '(no #tape)';
+    // 4. new furniture exists: long mall rails, street rails, roll-ins, marketplace booter
+    const E = window.__world.collide.all.edges, R = window.__world.collide.all.ramps;
+    const mallRail = E.find(e => e.name === 'Mall rail');
+    out.mallRailLen = mallRail ? +mallRail.len.toFixed(1) : 0;
+    out.streetRails = ['College St rail', 'Main St rail'].map(n => (E.find(e => e.name === n) || {}).len || 0);
+    out.rollIns = ['Main St drop-in roll-in', 'Main St drop-in entry'].map(n => !!R.find(r => r.name === n));
+    out.booter = !!R.find(r => r.name === 'Marketplace booter');
+    return out;
+  });
+  report('backflip scores on back-key press', /Backflip/.test(r.backflip) && r.backflipState === 'ride', `${r.backflip} → ${r.backflipState}`);
+  report('stomp fires + boosts on big clean landings', r.stomp.got && r.stompFaster, JSON.stringify(r.stomp));
+  report('trick tape shows landed tricks', /Kickflip/.test(r.tape), JSON.stringify(r.tape.slice(0, 80)));
+  report('long rails placed (mall 14 m + streets 18 m)', r.mallRailLen >= 13 && r.streetRails.every(l => l >= 17), `mall ${r.mallRailLen}, street ${r.streetRails}`);
+  report('roll-ins + Marketplace booter built', r.rollIns.every(Boolean) && r.booter, JSON.stringify({ rollIns: r.rollIns, booter: r.booter }));
+
+  const c = await ev(() => {
+    // 5. car hop + car bounce, tried over several parked cars — any given car may have
+    // unrelated scenery in the approach, so a bail only counts against us if it happens
+    // ON the car (within 3.5 m of its centre)
+    const carsAll = window.__world.collide.all.surfaces.filter(s => s.name === 'Parked car');
+    let hop = '', carBail = null, bounced = false;
+    for (let ci = 0; ci < Math.min(8, carsAll.length) && (!hop || !bounced); ci++) {
+      const car = carsAll[ci * 5 % carsAll.length];
+      const yaw = car.yaw + Math.PI / 2;                   // across the car, over its width
+      const ux = -Math.sin(yaw), uz = -Math.cos(yaw);
+      if (!hop) {
+        window.__recOn();
+        window.__air(car.x - ux * 6, car.top + 3, car.z - uz * 6, yaw, ux * 14, 2.5, uz * 14);
+        window.__sim(2.2);
+        hop = window.__rec.filter(e => e.type === 'trick' && /Car Hop/.test(e.name)).map(e => e.name).join('|');
+        window.__recOff();
+      }
+      if (!bounced) {
+        window.__tp(car.x - ux * 12, car.z - uz * 12, yaw, 9);
+        let onCarBail = false, reached = false;
+        for (let i = 0; i < 150; i++) {
+          window.__sim(1 / 60);
+          const d = window.__dbg();
+          const dc = Math.hypot(d.pos[0] - car.x, d.pos[2] - car.z);
+          if (dc < 3.5) reached = true;
+          if (d.state === 'bail') { if (dc < 3.5) { onCarBail = true; carBail = { ci, why: d.why }; } break; }
+        }
+        if (reached && !onCarBail) bounced = true;
+      }
+    }
+    return { hop, bounced, carBail };
+  });
+  report('car hop bonus fires on a clean clear', /Car Hop/.test(c.hop), JSON.stringify(c.hop));
+  report('riding into a car bounces, never bails', c.bounced && !c.carBail, JSON.stringify({ bounced: c.bounced, carBail: c.carBail }));
+};
+
+checks.rollins = async () => {
+  const r = await ev(() => {
+    const out = {};
+    // ride each line from the entry foot: climb, drop, send — stop at the FIRST clean
+    // landing after real air (past it the corridor simply runs out, as any street does)
+    const line = (x, z, yaw) => {
+      window.__tp(x, z, yaw, 2);
+      let air = false, end = null, topSpeed = 0;
+      for (let i = 0; i < 60 * 9; i++) {
+        window.__sim(1 / 60, ['ArrowUp']);
+        const d = window.__dbg();
+        topSpeed = Math.max(topSpeed, Math.hypot(d.vel[0], d.vel[2]));
+        if (d.state === 'air' && topSpeed > 10) air = true;
+        if (air && d.state === 'ride') { end = 'ride'; break; }
+        if (d.state === 'bail') { end = 'bail:' + d.why; break; }
+      }
+      return { air, end: end || window.__dbg().state, topSpeed: +topSpeed.toFixed(1) };
+    };
+    // start at the entry ramp foot, facing the tower
+    out.main = line(-220, 141, Math.PI / 2);
+    return out;
+  });
+  report('Main St drop-in line rides out', r.main.air && r.main.end === 'ride' && r.main.topSpeed > 14, JSON.stringify(r.main));
+};
+
 const all = want.length ? want : Object.keys(checks);
 for (const t of all) {
   if (!checks[t]) { console.log('no such check', t); continue; }

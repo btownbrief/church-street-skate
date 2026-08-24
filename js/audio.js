@@ -33,6 +33,8 @@ export class Audio {
     switch (ev.type) {
       case 'pop': this._thud(0.5, 0.08, 1800); this._blip(180, 0.08, 'triangle', 0.15, -80); break;
       case 'land': this._thud(0.35 + Math.min(0.4, (ev.speed || 0) * 0.03), 0.14, 900); break;
+      case 'stomp': this._thud(0.7, 0.22, 550); this._blip(220, 0.28, 'triangle', 0.16, 440); break;
+      case 'backflip': this._blip(320, 0.3, 'sine', 0.1, -170); break;
       case 'push': this._thud(0.12, 0.18, 500); break;
       case 'bail': this._thud(0.8, 0.35, 500); this._blip(120, 0.3, 'sawtooth', 0.12, -80); break;
       case 'bank': this._blip(660, 0.08, 'square', 0.08); setTimeout(() => this._blip(880, 0.1, 'square', 0.08), 70); if (ev.n >= 3) setTimeout(() => this._blip(1320, 0.16, 'square', 0.08), 140); break;

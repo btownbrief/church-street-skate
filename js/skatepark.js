@@ -159,7 +159,7 @@ export function buildSkatepark(ctx) {
   function funbox(x, z, yaw, w, topLen, h, name) {
     const F = frame(x, z, yaw);
     const y0 = Math.min(gY(x, z), gY(...F.P(0, -topLen / 2)), gY(...F.P(0, topLen / 2))) + 0.01;
-    const rampLen = h / 0.4, hw = w / 2, hd = topLen / 2, top = y0 + h;
+    const rampLen = h / 0.55, hw = w / 2, hd = topLen / 2, top = y0 + h;
     fbox(F, 0, 0, y0 - 0.2, w, h + 0.2, topLen, CONC);
     const p = (lr, lf, y) => { const q = F.P(lr, lf); return [q[0], y, q[1]]; };
     for (const s of [-1, 1]) {
@@ -185,6 +185,37 @@ export function buildSkatepark(ctx) {
       collide.addBlocker({ x: q[0], z: q[1], r: 0.05, top: y + h, name: name || 'Rail' });
     }
     collide.addEdge({ ax: a[0], ay: ya + h + 0.02, az: a[1], bx: b[0], by: yb + h + 0.02, bz: b[1], kind: 'rail', name: name || 'Rail' });
+  }
+
+  // ROLL-IN TOWER: a long shallow entry ramp up the back, a small deck, a steep roll-in
+  // face down the front. No kicker of its own — each one is aimed at an existing send so
+  // the drop is FREE SPEED into the line (ordinary push speed climbs the entry).
+  // Same footprint rule as the Bluff Bomber: the roll-in ramp overshoots UNDER the deck.
+  function rollIn(x, z, yaw, h, name) {
+    const F = frame(x, z, yaw);
+    const HW = 2.2, gDeck = gY(x, z), top = gDeck + h;
+    const p = (lr, lf, y) => { const q = F.P(lr, lf); return [q[0], y, q[1]]; };
+    const backLen = h * 3.4;                      // slope ≈ 0.29 — climbable at push speed
+    {
+      const y0 = gY(...F.P(0, -3 - backLen));
+      quad(p(-HW, -3 - backLen, y0 + 0.02), p(-HW, -3, top), p(HW, -3, top), p(HW, -3 - backLen, y0 + 0.02), PLY);
+      tri(p(-HW, -3 - backLen, y0 - 0.3), p(-HW, -3, top), p(-HW, -3, y0 - 0.3), FRAME);
+      tri(p(HW, -3 - backLen, y0 - 0.3), p(HW, -3, y0 - 0.3), p(HW, -3, top), FRAME);
+      const a = F.P(0, -3 - backLen), b = F.P(0, -3);
+      collide.addRamp({ ax: a[0], az: a[1], bx: b[0], bz: b[1], w: 2 * HW, yLow: y0, yHigh: top, kind: 'ramp', name: name + ' entry' });
+    }
+    fbox(F, 0, -1.5, top - 0.5, 2 * HW, 0.5, 3, CONC);
+    const dc = F.P(0, -1.5);
+    collide.addSurface({ x: dc[0], z: dc[1], w: 2 * HW, d: 3, yaw, top, bottom: gDeck, kind: 'platform', name: name + ' deck', grindable: false });
+    {
+      const dropLen = h * 1.35, over = 0.4;
+      const y1 = gY(...F.P(0, dropLen));
+      const slope = (top - y1) / dropLen;
+      quad(p(-HW, 0, top), p(-HW, dropLen, y1 + 0.02), p(HW, dropLen, y1 + 0.02), p(HW, 0, top), PLY);
+      for (const s of [-1, 1]) tri(p(s * HW, 0, top), p(s * HW, dropLen, y1 + 0.02), p(s * HW, 0, y1 - 0.3), FRAME);
+      const a = F.P(0, dropLen), b = F.P(0, -over);
+      collide.addRamp({ ax: a[0], az: a[1], bx: b[0], bz: b[1], w: 2 * HW, yLow: y1, yHigh: top + slope * over, kind: 'ramp', name: name + ' roll-in' });
+    }
   }
 
   // low pad you can roll straight onto — manuals and lip tricks
@@ -268,18 +299,20 @@ export function buildSkatepark(ctx) {
         const yaw = yawFwd(p.tx * fwdAlong, p.tz * fwdAlong);
         fn(p.x, p.z, yaw);
       };
-      // quarter pipes capping both ends of the block, facing into it
-      put(S(0) + 5.6, 0, -1, (x, z, yaw) => quarter(x, z, yaw, 3.6, 1.8, 'Mall quarter'));
-      put(S(1) - 5.6, 0, 1, (x, z, yaw) => quarter(x, z, yaw, 3.6, 1.8, 'Mall quarter'));
-      // kickers mid-block, one each way
-      put(S(0.30), 0, 1, (x, z, yaw) => kicker(x, z, yaw, 2.3, 1.0, 2.7, 'Mall kicker'));
-      put(S(0.70), 0, -1, (x, z, yaw) => kicker(x, z, yaw, 2.3, 1.0, 2.7, 'Mall kicker'));
+      // quarter pipes capping both ends of the block, facing into it — taller and wider
+      // than v1 (the old 1.8 m faces barely popped)
+      put(S(0) + 5.6, 0, -1, (x, z, yaw) => quarter(x, z, yaw, 4.4, 2.1, 'Mall quarter'));
+      put(S(1) - 5.6, 0, 1, (x, z, yaw) => quarter(x, z, yaw, 4.4, 2.1, 'Mall quarter'));
+      // kickers mid-block, one each way — steeper faces (h up, run down) for real pop
+      put(S(0.30), 0, 1, (x, z, yaw) => kicker(x, z, yaw, 2.6, 1.25, 2.3, 'Mall kicker'));
+      put(S(0.70), 0, -1, (x, z, yaw) => kicker(x, z, yaw, 2.6, 1.25, 2.3, 'Mall kicker'));
       // funbox dead centre
       put(S(0.5), 0, 1, (x, z, yaw) => funbox(x, z, yaw, 2.6, 6, 0.6, 'Mall funbox'));
-      // flat rails beside the line, alternating sides
+      // LONG flat rails beside the line, alternating sides — 14 m, pushed out to ±2.6 so
+      // they clear the widened quarters and the kicker shoulders
       const rs = bl.i % 2 ? 1 : -1;
-      put(S(0.20), rs * 1.45, 1, (x, z, yaw) => rail(x, z, yaw, 6.5, 0.55, 'Mall rail'));
-      put(S(0.80), -rs * 1.45, 1, (x, z, yaw) => rail(x, z, yaw, 6.5, 0.55, 'Mall rail'));
+      put(S(0.22), rs * 2.6, 1, (x, z, yaw) => rail(x, z, yaw, 14, 0.55, 'Mall rail'));
+      put(S(0.78), -rs * 2.6, 1, (x, z, yaw) => rail(x, z, yaw, 14, 0.55, 'Mall rail'));
       // manual pads near the block mouths
       put(S(0.11), 0, 1, (x, z, yaw) => manualPad(x, z, yaw, 2.2, 4.5, 'Manual pad'));
       put(S(0.89), 0, 1, (x, z, yaw) => manualPad(x, z, yaw, 2.2, 4.5, 'Manual pad'));
@@ -287,6 +320,19 @@ export function buildSkatepark(ctx) {
     if (BLOCKS.length > 1) {
       const c = posAt((BLOCKS[1].a + BLOCKS[1].b) / 2, 0);
       spots.push({ name: 'Marketplace ramp jam', x: c.x, z: c.z, r: 14, bonus: 200 });
+    }
+    // THE MARKETPLACE BOOTER: Church St drops 9.6 m Pearl→Main, so the south end of the
+    // last block is the fastest brick in town — a big kicker there sends the whole
+    // four-block bomb run over the Main Street crossing.
+    if (BLOCKS.length) {
+      const last = BLOCKS[BLOCKS.length - 1];
+      const s = last.a + (last.b - last.a) * 0.97;
+      const p = posAt(s, 0);
+      // face whichever way the brick actually falls — the send belongs at the bottom of
+      // the grade, aimed with it, whatever direction the centreline was digitised in
+      const dwn = gY(p.x + p.tx * 5, p.z + p.tz * 5) < gY(p.x - p.tx * 5, p.z - p.tz * 5) ? 1 : -1;
+      kicker(p.x, p.z, yawFwd(p.tx * dwn, p.tz * dwn), 3.2, 1.6, 2.0, 'Marketplace booter');
+      spots.push({ name: 'Marketplace booter', x: p.x, z: p.z, r: 12, bonus: 300 });
     }
   }
 
@@ -299,7 +345,7 @@ export function buildSkatepark(ctx) {
     const hx = -80, hz = 52;
     halfpipe(hx, hz, Math.PI / 2, 14, 2.2, 3.4, 'City Hall Park halfpipe');
     rail(-80, 78, 0, 8, 0.55, 'Park rail');
-    kicker(-76, 92, Math.PI, 2.3, 0.9, 2.7, 'Park kicker');
+    kicker(-76, 92, Math.PI, 2.8, 1.3, 2.4, 'Park kicker');
     spots.push({ name: 'City Hall Park halfpipe', x: hx, z: hz, r: 12, bonus: 250 });
   }
 
@@ -397,6 +443,10 @@ export function buildSkatepark(ctx) {
   {
     kicker(-470, 10, Math.PI / 2, 6, 1.9, 2.1, 'College St super kicker');
     spots.push({ name: 'College St super kicker', x: -470, z: 10, r: 14, bonus: 300 });
+    // Long street rail beside the bomb line (z 14 keeps its posts out of the z 10 runout).
+    // NO roll-in tower here: the z 10 corridor is the super kicker's only clear run-up —
+    // a tower in it blocks the line it was meant to feed (the Main St one has the room).
+    rail(-458, 14, Math.PI / 2, 18, 0.55, 'College St rail');
   }
 
   // (c) TWO MORE STREET MEGAS. Same rules as (b): traffic.js runs cars only 1.4–1.95 m
@@ -409,6 +459,10 @@ export function buildSkatepark(ctx) {
     // north-side corridor at z 141 is clear from x -235 to -315 (surveyed headless).
     kicker(-272, 141, Math.PI / 2, 6, 1.9, 2.1, 'Main St mega kicker');
     spots.push({ name: 'Main St mega kicker', x: -272, z: 141, r: 14, bonus: 300 });
+    // ROLL-IN feeding the mega kicker: probed clear along z 141 from x −222 to −252,
+    // 24 m of downhill runout between the drop and the send
+    rollIn(-240, 141, Math.PI / 2, 4, 'Main St drop-in');
+    rail(-253, 137.5, Math.PI / 2, 18, 0.55, 'Main St rail');
     // Battery St, aimed west OFF the street over the waterfront slope — a natural
     // mini-bluff: the ground west of the roadway falls away hard and the landing
     // projection turns the drop back into roll speed.

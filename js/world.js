@@ -54,6 +54,7 @@ export async function buildWorld({ scene, renderer, camera, quality }) {
 
   return {
     collide, terrain, spawn, spots, info, stats, WORLD, play, letters: ctx.letters, _locations: locations, cityInfo: ctx.cityInfo, landmarkSigns: ctx.landmarkSigns,
+    carsCleared: (ax, az, bx, bz) => (ctx.carsCleared ? ctx.carsCleared(ax, az, bx, bz) : 0),
     update(dt, skater) { for (const u of updaters) u(dt, skater); },
     locationName(x, z) { return locator(x, z); },
     confine(sk) {

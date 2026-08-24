@@ -51,13 +51,24 @@ body.run #hud-loc { margin-top:40px; }
 #charge > i, #charge > b { position:absolute; top:0; bottom:0; }
 #charge > i { left:0; background:linear-gradient(90deg,#ffd84d,#f0a832); border-radius:5px 0 0 5px; }
 #charge > b { background:#3fae6c; box-shadow:0 0 8px rgba(63,174,108,.8); }
-#popups .pop { position:absolute; transform:translate(-50%,-50%); font-weight:900; font-size:30px; color:#fff; text-shadow:0 2px 10px rgba(0,0,0,.8); animation: popUp 1.4s ease-out forwards; white-space:nowrap; }
+#popups .pop { position:absolute; transform:translate(-50%,-50%); font-weight:900; font-size:30px; color:#fff; text-shadow:0 2px 10px rgba(0,0,0,.8); animation: popUp 2.6s ease-out forwards; white-space:nowrap; }
+#popups .pop.stomp { color:#ffd84d; font-size:36px; letter-spacing:.06em; text-shadow:0 2px 12px rgba(0,0,0,.9), 0 0 26px rgba(255,216,77,.55); }
 #popups .pop.bank { color:var(--accent); font-size:38px; }
 #popups .pop.bail { color:#ff5a48; font-size:28px; }
 #popups .pop.sk { color:#ffb347; font-size:20px; }
 #popups .pop.wreck { color:#ff5a48; font-size:19px; text-shadow:0 2px 10px rgba(0,0,0,.9), 0 0 18px rgba(255,60,40,.5); }
 #popups .pop.flow { color:#2c9a58; font-size:24px; letter-spacing:.3em; }
-@keyframes popUp { 0% { opacity:0; transform:translate(-50%,-30%) scale(.6);} 15% { opacity:1; transform:translate(-50%,-50%) scale(1.1);} 70% { opacity:1; transform:translate(-50%,-70%) scale(1);} 100% { opacity:0; transform:translate(-50%,-110%) scale(1);} }
+@keyframes popUp { 0% { opacity:0; transform:translate(-50%,-30%) scale(.6);} 9% { opacity:1; transform:translate(-50%,-50%) scale(1.1);} 80% { opacity:1; transform:translate(-50%,-70%) scale(1);} 100% { opacity:0; transform:translate(-50%,-110%) scale(1);} }
+
+/* TRICK TAPE: running history of everything you land, top-left under the score block */
+#tape { position:absolute; left:14px; top:max(200px, 27%); display:flex; flex-direction:column; gap:3px; max-width:44%; pointer-events:none; }
+#tape .row { font-size:13px; font-weight:700; color:#fff; text-shadow:0 1px 6px rgba(0,0,0,.8);
+  background:rgba(15,20,30,.45); border-left:3px solid var(--accent); padding:2px 8px; border-radius:4px;
+  opacity:.92; transition:opacity .6s; animation: tapeIn .18s ease-out; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+#tape .row.gap { border-left-color:#ffd84d; }
+#tape .row.bail { border-left-color:#ff5a48; color:#ff9c90; }
+#tape .row.out { opacity:0; }
+@keyframes tapeIn { from { transform:translateX(-14px); opacity:0; } }
 #callout { position:absolute; left:50%; top:30%; transform:translate(-50%,0) scale(.9); background:rgba(181,85,47,.92); color:#fff; padding:10px 18px; border-radius:12px; text-align:center; opacity:0; transition: all .25s; box-shadow:0 8px 30px rgba(0,0,0,.4); }
 #callout.on { opacity:1; transform:translate(-50%,0) scale(1); }
 #callout .ct { font-weight:900; font-size:18px; letter-spacing:.02em; }

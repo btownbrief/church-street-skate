@@ -18,6 +18,8 @@ export class Skater {
     this.charge = 0; this.charging = false;
     this.yawVel = 0; this.spinAccum = 0; this.airTime = 0; this.airPeak = 0; this.lastGround = V().copy(this.pos);
     this.flip = null;                    // { kind, t, dur, dir }
+    this.bodyFlip = null;                // { t, dur } — whole-rig backflip (back key in the air)
+    this._backHeld = false; this._bodyFlips = 0;
     this.shoveOff = 0;                   // visual board yaw offset during shove-its
     this.grab = null;                    // { name, t }
     this.grind = null;                   // { edge, t, dir, speed, type, time, balance }
@@ -47,7 +49,8 @@ export class Skater {
 
   respawn(x, y, z, yaw) {
     this.pos.set(x, y, z); this.vel.set(0, 0, 0); this.yaw = yaw ?? this.yaw; this.state = 'ride';
-    this.flip = null; this.grind = null; this.manual = null; this.bail = null; this.grab = null; this.combo = []; this.comboPending = 0;
+    this.flip = null; this.bodyFlip = null; this._bodyFlips = 0; this._backHeld = false;
+    this.grind = null; this.manual = null; this.bail = null; this.grab = null; this.combo = []; this.comboPending = 0;
     this.yawVel = 0; this.spinAccum = 0; this.shoveOff = 0; this.charging = false; this.charge = 0; this.crouch = 0; this.balance = 0;
     this.lastEdge = null; this.grindCooldown = 0; this.wallHitCooldown = 0; this._landedAt = -1; this._revertAt = -1; this.groundKind = 'ground'; this.groundObj = null; this.normal.set(0, 1, 0);
     this.onGround = true; this._acc = 0; this.sketchy = 0; this.braking = false;
@@ -127,6 +130,8 @@ export class Skater {
     vy *= 1 + 0.30 * clamp(Math.hypot(this.vel.x, this.vel.z) / 28, 0, 1);
     this.state = 'air'; this.onGround = false; this.vel.y = vy; this.pos.y += 0.03; this.airTime = 0; this.airPeak = this.pos.y; this.spinAccum = 0; this.yawVel = 0; this.crouch = 0; this.charging = false;
     this._airFlips = 0; this._airFlipName = null;
+    this.bodyFlip = null; this._bodyFlips = 0;
+    this._backHeld = inp ? inp.throttle < -0.5 : false;  // holding brake through takeoff ≠ asking for a backflip
     this.emit('pop', { vy });
     this.addTrickPending({ name: 'Ollie', pts: CFG.score.ollie, silent: true });
     if (ev) this.startFlips(ev, inp);
@@ -220,7 +225,9 @@ export class Skater {
     if (hit) {
       const vn = v.x * hit.nx + v.z * hit.nz;
       if (vn < 0) {
-        if (-vn > CFG.wallBailSpeed && this.wallHitCooldown <= 0) { this.startBail('wall'); return; }
+        // Cars never bail you (his call): riding into bodywork bounces, every speed
+        const isCar = hit.obj && hit.obj.kind === 'car';
+        if (!isCar && -vn > CFG.wallBailSpeed && this.wallHitCooldown <= 0) { this.startBail('wall'); return; }
         v.x -= hit.nx * vn * 1.05; v.z -= hit.nz * vn * 1.05; this.wallHitCooldown = 0.3; if (-vn > 2) this.emit('bump', { speed: -vn });
       }
     }
@@ -288,12 +295,33 @@ export class Skater {
     this.flip = null; this.shoveOff = 0;
   }
 
+  finishBodyFlip() {
+    this._bodyFlips++;
+    const name = this._bodyFlips > 1 ? this._bodyFlips + 'x Backflip' : 'Backflip';
+    this.addTrickPending({ name, pts: CFG.score.backflip * this._bodyFlips });
+    this._airFlipName = name;              // merges into "FS 360 Backflip" on a spun landing
+    this.bodyFlip = null;
+  }
+
   stepAir(dt, inp, ev) {
     const cw = this.cw, p = this.pos, v = this.vel;
     this.airTime += dt; this.crouch = damp(this.crouch, 0.25, 6, dt);
     // spin
     const want = -inp.steer * CFG.spinRate; this.yawVel = damp(this.yawVel, want, CFG.spinResponse, dt);
     this.yaw += this.yawVel * dt; this.spinAccum += this.yawVel * dt;
+    // BACKFLIP: a FRESH press of back (S / stick down) in the air flips the whole rig
+    // backwards. Grab is the tailgrab modifier, so a held grab blocks it; the edge detect
+    // means the brake held through takeoff never auto-flips (see pop()).
+    const backNow = inp.throttle < -0.5 && !inp.grab;
+    if (backNow && !this._backHeld && !this.bodyFlip && this.airTime > 0.08) {
+      this.bodyFlip = { t: 0, dur: 0.62 };
+      this.emit('backflip');
+    }
+    this._backHeld = backNow;
+    if (this.bodyFlip) {
+      this.bodyFlip.t += dt;
+      if (this.bodyFlip.t >= this.bodyFlip.dur) { this.finishBodyFlip(); }
+    }
     // flips
     this.startFlips(ev, inp);
     if (this.flip) { this.flip.t += dt; if (this.flip.t >= this.flip.dur) this.finishFlip(); }
@@ -313,12 +341,18 @@ export class Skater {
     if (p.y > this.airPeak) this.airPeak = p.y;
     // walls
     const hit = cw.resolveWalls(p, this.hitboxR, p.y, p.y + 1.6);
-    if (hit) { const vn = v.x * hit.nx + v.z * hit.nz; if (vn < 0) { if (-vn > CFG.wallBailSpeed) { this.startBail('wall'); return; } v.x -= hit.nx * vn * 1.2; v.z -= hit.nz * vn * 1.2; } }
+    if (hit) { const vn = v.x * hit.nx + v.z * hit.nz; if (vn < 0) { const isCar = hit.obj && hit.obj.kind === 'car'; if (!isCar && -vn > CFG.wallBailSpeed) { this.startBail('wall'); return; } v.x -= hit.nx * vn * 1.2; v.z -= hit.nz * vn * 1.2; } }
     // ceiling
     const ceil = cw.ceilingAt(p.x, p.z, p.y); if (p.y + 1.7 > ceil && v.y > 0) { p.y = ceil - 1.7; v.y = 0; }
     // grind snap
     if (v.y < 0.25 && this.grindCooldown <= 0 && (v.x * v.x + v.z * v.z) > 1.0) {
-      const e = cw.nearestEdge(p.x, p.y, p.z, CFG.grindSnapDist, CFG.grindSnapAbove, CFG.grindSnapBelow, this._e || (this._e = {}));
+      let e = cw.nearestEdge(p.x, p.y, p.z, CFG.grindSnapDist, CFG.grindSnapAbove, CFG.grindSnapBelow, this._e || (this._e = {}));
+      // second, looser pass just for car roofs: the target is short, narrow and often
+      // moving past fast — without extra magnetism it is nearly impossible to hit
+      if (!e) {
+        const e2 = cw.nearestEdge(p.x, p.y, p.z, CFG.grindSnapDist * 1.8, 0.85, 0.45, this._e2 || (this._e2 = {}));
+        if (e2 && e2.edge.name === 'Car roof') e = e2;
+      }
       if (e && e.edge !== this.lastEdge) {
         // Plummeting ACROSS an edge (fast fall, no speed along it) must not magnet the
         // skater into a sideways boardslide — that read as a landing glitch on big jumps.
@@ -357,6 +391,11 @@ export class Skater {
     const half = Math.round(Math.abs(this.spinAccum) / Math.PI);
     let bail = null;
     if (this.flip && this.flip.t < this.flip.dur * 0.82) bail = 'flip';
+    // landing upside-down mid-backflip is a slam; nearly-round gets the assist and scores
+    if (this.bodyFlip) {
+      if (this.bodyFlip.t < this.bodyFlip.dur * 0.8) bail = bail || 'flip';
+      else this.finishBodyFlip();
+    }
     const vy2 = yawOf(vpx, vpz); const sp = Math.hypot(vpx, vpz);
     let d = Math.abs(angleDiff(this.yaw, vy2)); d = Math.min(d, Math.PI - d); // board is symmetric
     // Long airs earn a wider landing window: sticking a monster send slightly crooked is a
@@ -385,6 +424,14 @@ export class Skater {
     const sgn = (vpx * _f.x + vpz * _f.z) >= 0 ? 1 : -1;
     v.x = _f.x * sp * sgn; v.z = _f.z * sp * sgn;
     v.y = 0; this.yawVel = 0; this.spinAccum = 0; this.state = 'ride'; this._landedAt = this.t; this.sketchy = d > tol * 0.6 ? 1 : 0;
+    // STOMP: stick a genuinely big air CLEAN and the landing pays out — a burst of roll
+    // speed on top of the landing. Sketchy landings keep the wobble and get nothing.
+    if ((this.airTime > 0.95 || height > 2.4) && !this.sketchy && sp > 4) {
+      const ns = Math.min(28, sp * 1.2);
+      v.x *= ns / sp; v.z *= ns / sp;
+      this.addFlow(0.08);
+      this.emit('stomp', { height, airTime: this.airTime, speed: ns });
+    }
     // The takeoff point travels with the event: gaps.js needs where this air STARTED, and by
     // the time main.js drains the queue a later substep has already moved lastGround.
     this.emit('land', { sketchy: this.sketchy, speed: sp, height, airTime: this.airTime, x: this.pos.x, z: this.pos.z, fromX: this.lastGround.x, fromZ: this.lastGround.z });
@@ -403,6 +450,10 @@ export class Skater {
   startGrind(e, inp) {
     const edge = e.edge, v = this.vel;
     if (this.flip && this.flip.t < this.flip.dur * 0.82) { this.startBail('flip'); return; }
+    if (this.bodyFlip) {
+      if (this.bodyFlip.t < this.bodyFlip.dur * 0.8) { this.startBail('flip'); return; }
+      this.finishBodyFlip();
+    }
     if (this.flip) this.finishFlip();
     if (this.grab) { if (this.grab.t > 0.2) this.addTrickPending({ name: this.grab.name, pts: 70 + 60 * this.grab.t }); this.grab = null; }
     const dx = (edge.bx - edge.ax) / edge.len, dz = (edge.bz - edge.az) / edge.len;
@@ -461,7 +512,8 @@ export class Skater {
     this.addTrickPending({ name: G.type + (G.edge.name ? ' · ' + G.edge.name : ''), pts, spotName: G.edge.name });
     this.grind = null; this.balance = 0; this.grindCooldown = why === 'ollie' ? 0.05 : 0.25;
     this.state = 'air'; this.vel.y = vy; this.airTime = 0; this.airPeak = this.pos.y; this.spinAccum = 0; this.pos.y += 0.02;
-    this._airFlips = 0; this._airFlipName = null;
+    this._airFlips = 0; this._airFlipName = null; this.bodyFlip = null; this._bodyFlips = 0;
+    this._backHeld = inp ? inp.throttle < -0.5 : false;
     this.emit('grindEnd', { why });
     if (ev) this.startFlips(ev, inp);
   }
@@ -475,7 +527,7 @@ export class Skater {
     const impact = Math.hypot(this.vel.x, this.vel.z);
     const fall = this.state === 'air' ? Math.max(0, this.airPeak - this.pos.y) : 0;
     this.bail = { t: 0, why, spin: (Math.random() - 0.5) * 6, impact, fall, tumble: 0, px: this.pos.x, pz: this.pos.z };
-    this.state = 'bail'; this.flip = null; this.grind = null; this.manual = null; this.grab = null; this.balance = 0; this.charging = false; this.shoveOff = 0;
+    this.state = 'bail'; this.flip = null; this.bodyFlip = null; this.grind = null; this.manual = null; this.grab = null; this.balance = 0; this.charging = false; this.shoveOff = 0;
     const lost = this.comboValue(); this.combo = []; this.comboPending = 0; this.session.bails++;
     this.flow *= 0.35; this._flowFull = false; this.special = 0;
     this.emit('bail', { why, lost });

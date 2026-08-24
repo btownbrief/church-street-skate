@@ -125,6 +125,21 @@ export class SkaterMesh {
     this.leaves.geometry.attributes.color.needsUpdate = true;
     this.leafT = 1.6; this.leaves.visible = true;
   }
+  // STOMP dust: same particle pool as the maple leaves, recoloured — a low, wide puff
+  // kicked out sideways from under the trucks on a big clean landing.
+  stompBurst(at) {
+    const N = this.leafN, p = this.leaves.geometry.attributes.position.array, c = this.leaves.geometry.attributes.color.array, v = this.leafV;
+    for (let i = 0; i < N; i++) {
+      p[i * 3] = at.x + (Math.random() - 0.5) * 0.5; p[i * 3 + 1] = at.y + 0.06 + Math.random() * 0.15; p[i * 3 + 2] = at.z + (Math.random() - 0.5) * 0.5;
+      const a = Math.random() * TAU, s = 3.0 + Math.random() * 3.5;
+      v[i * 3] = Math.cos(a) * s; v[i * 3 + 1] = 0.6 + Math.random() * 1.4; v[i * 3 + 2] = Math.sin(a) * s;
+      const t = 0.75 + Math.random() * 0.2;                    // warm dust greys
+      c[i * 3] = t; c[i * 3 + 1] = t * 0.97; c[i * 3 + 2] = t * 0.9;
+    }
+    this.leaves.geometry.attributes.position.needsUpdate = true;
+    this.leaves.geometry.attributes.color.needsUpdate = true;
+    this.leafT = 0.9; this.leaves.visible = true;
+  }
   _stepLeaves(dt) {
     if (this.leafT <= 0) return;
     this.leafT -= dt;
@@ -295,6 +310,14 @@ export class SkaterMesh {
     if (!bail) {
       this.root.quaternion.setFromRotationMatrix(this._m);
       this.root.rotateZ(-lean * 0.17 - wob * 0.05);
+      // BACKFLIP: the whole rig — body, board, feet — rotates backwards, pivoting at the
+      // hips (translate up / rotate / translate back keeps the pivot off the ankles)
+      if (sk.bodyFlip) {
+        const e = clamp(sk.bodyFlip.t / sk.bodyFlip.dur, 0, 1);
+        this.root.translateY(0.85);
+        this.root.rotateX(TAU * e);
+        this.root.translateY(-0.85);
+      }
     }
 
     // ---------------- board transform ----------------
