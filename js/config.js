@@ -29,5 +29,6 @@ export const CFG = {
   // camera
   camDist: 5.2, camHeight: 2.1, camLookAhead: 2.4, camFov: 62,
   // scoring
-  score: { ollie: 10, kickflip: 100, heelflip: 100, shoveit: 80, fsshoveit: 90, treflip: 300, varial: 220, spin180: 60, spin360: 180, spin540: 420, spin720: 800, grindPerSec: 90, grindBase: 80, manualBase: 60, manualPerSec: 70, bigAir: 50 },
+  score: { ollie: 10, kickflip: 100, heelflip: 100, shoveit: 80, fsshoveit: 90, treflip: 300, varial: 220, spin180: 60, spin360: 180, spin540: 420, spin720: 800, grindPerSec: 90, grindBase: 80, manualBase: 60, manualPerSec: 70, bigAir: 50, revert: 60, maple: 1200 },
+  runSeconds: 120,         // 2-MINUTE RUN mode
 };
