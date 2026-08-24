@@ -479,6 +479,46 @@ checks.tricknames = async () => {
   report('Smith/Feeble grind fires on steer entry', /(Smith|Feeble)/.test(r.smith || ''), JSON.stringify(r.smith));
 };
 
+checks.flickpad = async () => {
+  const r = await ev(() => {
+    const out = {};
+    const peak = (frames) => { let p = -1e9, y0 = null; for (let i = 0; i < frames; i++) { window.__sim(1 / 60); const d = window.__dbg(); if (y0 === null) y0 = d.pos[1]; p = Math.max(p, d.pos[1] - y0); } return p; };
+    // quick flick straight up = minimum ollie
+    window.__tp(-440, 10, -Math.PI / 2, 6);
+    window.__flickSeq([[0, -1]]);
+    out.quick = +peak(70).toFixed(2);
+    // pull back, hold half a second, flick up = charged ollie — must fly well higher
+    window.__tp(-440, 10, -Math.PI / 2, 6);
+    window.__flickSeq([[0, 1]], false); window.__sim(0.5);
+    window.__flickSeq([[0, -1]]);
+    out.charged = +peak(100).toFixed(2);
+    // S→NW = kickflip, S→NE = heelflip, side flicks = shove-it with the flick picking FS/BS.
+    // Read the trick EVENTS, not skater.combo — a barely-charged flick lands fast enough
+    // that the combo has already banked (and cleared) by the time the sim settles.
+    const trick = (pts) => {
+      window.__tp(-440, 10, -Math.PI / 2, 8); window.__recOn();
+      window.__flickSeq(pts); window.__sim(1.4);
+      const names = window.__rec.filter(e => e.type === 'trick').map(e => e.name).join('|');
+      window.__recOff(); return names;
+    };
+    out.kick = trick([[0, 1], [-0.7, -0.7]]);
+    out.heel = trick([[0, 1], [0.7, -0.7]]);
+    out.shoveW = trick([[0, 1], [-1, 0]]);
+    out.shoveE = trick([[0, 1], [1, 0]]);
+    // pull back and just let go: the charge must die quietly — no pop, no phantom ollie
+    window.__tp(-440, 10, -Math.PI / 2, 6);
+    window.__recOn();
+    window.__flickSeq([[0, 1]]); window.__sim(0.8);
+    out.cancel = { state: window.__dbg().state, pops: window.__rec.filter(e => e.type === 'pop').length };
+    window.__recOff();
+    return out;
+  });
+  report('flick up pops, pull-back charges higher', r.quick > 0.3 && r.charged > r.quick + 1, `quick ${r.quick} m, charged ${r.charged} m`);
+  report('flick corners map to kick/heel', /Kickflip/.test(r.kick) && /Heelflip/.test(r.heel), `${r.kick} / ${r.heel}`);
+  report('side flicks shove with direction', /FS Shove-it/.test(r.shoveW) && /Pop Shove-it/.test(r.shoveE), `${r.shoveW} / ${r.shoveE}`);
+  report('abandoned charge cancels without a pop', r.cancel.state === 'ride' && r.cancel.pops === 0, JSON.stringify(r.cancel));
+};
+
 const all = want.length ? want : Object.keys(checks);
 for (const t of all) {
   if (!checks[t]) { console.log('no such check', t); continue; }

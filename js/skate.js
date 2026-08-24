@@ -51,7 +51,7 @@ export class Skater {
     this.yawVel = 0; this.spinAccum = 0; this.shoveOff = 0; this.charging = false; this.charge = 0; this.crouch = 0; this.balance = 0;
     this.lastEdge = null; this.grindCooldown = 0; this.wallHitCooldown = 0; this._landedAt = -1; this._revertAt = -1; this.groundKind = 'ground'; this.groundObj = null; this.normal.set(0, 1, 0);
     this.onGround = true; this._acc = 0; this.sketchy = 0; this.braking = false;
-    const P = this._pend; P.flipA = P.flipB = P.shove = P.olliePressed = P.ollieReleased = false;
+    const P = this._pend; P.flipA = P.flipB = P.shove = P.olliePressed = P.ollieReleased = P.ollieCancel = false;
     this.events.length = 0;
   }
 
@@ -62,16 +62,17 @@ export class Skater {
     const P = this._pend;
     P.flipA = P.flipA || input.flipA; P.flipB = P.flipB || input.flipB; P.shove = P.shove || input.shove;
     P.olliePressed = P.olliePressed || input.olliePressed; P.ollieReleased = P.ollieReleased || input.ollieReleased;
+    P.ollieCancel = P.ollieCancel || input.ollieCancelled;
     let n = 0;
     while (this._acc >= STEP && n < 12) { this.step(STEP, input); this._acc -= STEP; n++; }
   }
-  _pend = { flipA: false, flipB: false, shove: false, olliePressed: false, ollieReleased: false };
-  _ev = { flipA: false, flipB: false, shove: false, olliePressed: false, ollieReleased: false };
+  _pend = { flipA: false, flipB: false, shove: false, olliePressed: false, ollieReleased: false, ollieCancel: false };
+  _ev = { flipA: false, flipB: false, shove: false, olliePressed: false, ollieReleased: false, ollieCancel: false };
 
   step(dt, inp) {
     this.t += dt;
-    const P = this._pend; const ev = this._ev; ev.flipA = P.flipA; ev.flipB = P.flipB; ev.shove = P.shove; ev.olliePressed = P.olliePressed; ev.ollieReleased = P.ollieReleased;
-    P.flipA = P.flipB = P.shove = P.olliePressed = P.ollieReleased = false;
+    const P = this._pend; const ev = this._ev; ev.flipA = P.flipA; ev.flipB = P.flipB; ev.shove = P.shove; ev.olliePressed = P.olliePressed; ev.ollieReleased = P.ollieReleased; ev.ollieCancel = P.ollieCancel;
+    P.flipA = P.flipB = P.shove = P.olliePressed = P.ollieReleased = P.ollieCancel = false;
     if (this.grindCooldown > 0) this.grindCooldown -= dt;
     if (this.wallHitCooldown > 0) this.wallHitCooldown -= dt;
     this.session.topSpeed = Math.max(this.session.topSpeed, this.vel.length());
@@ -109,6 +110,8 @@ export class Skater {
 
   // ---- charging / ollie ----------------------------------------------------
   handleOllieCharge(dt, inp, ev) {
+    // flick pad only: the charge was let go without a flick — stand back up, no pop
+    if (ev.ollieCancel) { this.charging = false; this.charge = 0; }
     if (ev.olliePressed) { this.charging = true; this.charge = 0; }
     if (this.charging) { this.charge = Math.min(CFG.ollieCharge, this.charge + dt); this.crouch = damp(this.crouch, 0.5 + 0.5 * this.charge / CFG.ollieCharge, 14, dt); }
     else this.crouch = damp(this.crouch, 0, 10, dt);

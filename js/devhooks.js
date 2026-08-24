@@ -149,6 +149,13 @@ export function installDev(api) {
   };
   // Event recorder: mirrors every skater event into window.__rec so a test can assert on
   // 'gap' / 'wreck' / 'revert' / 'maple' without polling state and hoping to catch it.
+  // Flick pad: feed a synthetic gesture straight into the recognizer — [x,y] samples in
+  // pad-normalized coords (y down, so [0,1] is a held pull-back and [0,-1] a flick up).
+  // Emitted edges land on `input` exactly as a real flick would; step frames between calls
+  // to let the skater consume them. lift=false keeps the "finger" down (charging).
+  window.__flickSeq = (pts, lift = true) => { for (const p of pts) input.flick.sample(p[0], p[1], 1 / 60); if (lift) input.flick.release(); };
+  window.__flickState = () => ({ combo: input.flick.combo.slice(), charging: input.flick.charging, locked: input.flick.locked, ollie: input.ollie });
+
   window.__recOn = () => { window.__rec = []; api.setTap((ev) => { window.__rec.push(Object.assign({}, ev)); }); };
   window.__recOff = () => { api.setTap(null); window.__rec = []; };
   window.__rec = [];
