@@ -321,6 +321,80 @@ export function buildSkatepark(ctx) {
   }
 
   // ===========================================================================
+  // MEGA SENDS — two structures that are too big for a plaza
+  // ===========================================================================
+  // (a) THE BLUFF BOMBER. Roll-in tower on the flat top of the Battery Park bluff, feeding
+  //     a steep kicker aimed WEST straight off the edge, with a mega-ramp landing
+  //     transition down the hillside to catch the fall and turn it back into roll speed.
+  //
+  //     Placement note: the brief's z −400…−430 is FLAT in the real USGS terrain (it falls
+  //     1.3 m over 50 m). The actual bluff is ~40 m south — at z −375 the ground drops from
+  //     +1.0 at x −560 to −12 at x −610. The whole structure moved there. z −375 is also
+  //     the one line through here that clears the curved stone overlook wall (which arcs
+  //     x −538…−557 between z −330 and −368) and the buildings at x ≈ −500…−508.
+  {
+    const Z = -375, YAW = Math.PI / 2;            // facing west: fwd(π/2) = (−1, 0)
+    const F = frame(-540, Z, YAW);                // lf increases WEST, so x = −540 − lf
+    const P = (lr, lf, y) => { const q = F.P(lr, lf); return [q[0], y, q[1]]; };
+    const HW = 3.5, H = 8;                        // deck half-width, tower height
+    const gDeck = gY(-540, Z), top = gDeck + H;
+    // --- back entry ramp: pushed up from the plaza. 8 m of rise needs ~16.5 m/s at the
+    //     bottom whatever the run length — just past the cold push ceiling and comfortably
+    //     inside the flow-boosted one. Earning the tower is the point.
+    //     Its foot stops at x −521: Park Street (primary, with live traffic) crosses this
+    //     axis at x ≈ −514, and a ramp base sitting in the roadway meant cars picked riders
+    //     off halfway up it.
+    {
+      const y0 = gY(-521, Z);
+      quad(P(-HW, -19, y0 + 0.02), P(-HW, -3, top), P(HW, -3, top), P(HW, -19, y0 + 0.02), PLY);
+      tri(P(-HW, -19, y0 - 0.3), P(-HW, -3, top), P(-HW, -3, y0 - 0.3), FRAME);
+      tri(P(HW, -19, y0 - 0.3), P(HW, -3, y0 - 0.3), P(HW, -3, top), FRAME);
+      collide.addRamp({ ax: -521, az: Z, bx: -537, bz: Z, w: 2 * HW, yLow: y0, yHigh: top, kind: 'ramp', name: 'Bluff Bomber ramp' });
+    }
+    // --- the deck itself
+    fbox(F, 0, 0, top - 0.5, 2 * HW, 0.5, 6, CONC);
+    for (const s of [-1, 1]) quad(P(s * HW, -3, gDeck - 0.3), P(s * HW, -3, top - 0.5), P(s * HW, 3, top - 0.5), P(s * HW, 3, gDeck - 0.3), SKIRT);
+    collide.addSurface({ x: -540, z: Z, w: 2 * HW, d: 6, yaw: YAW, top, bottom: gDeck, kind: 'platform', name: 'Bluff Bomber deck', grindable: false });
+    // --- roll-in face: 8 m of drop in 11 m. Its high edge must land EXACTLY on the deck's
+    //     west edge (x −543) and then overshoot a little further east, UNDER the deck. An
+    //     earlier version stopped 0.5 m short and that crack threw the rider into the air
+    //     off the deck, over the whole transition, to land at 5 m/s at the bottom — the
+    //     roll-in did nothing. Ramp and surface footprints have to touch or overlap, never
+    //     merely come close (same rule as the City Hall landing).
+    {
+      const y1 = gY(-554, Z), over = 0.4;
+      const slope = (top - y1) / 11;              // −554 (ground) → −543 (deck edge)
+      quad(P(-HW, 3, top), P(-HW, 14, y1 + 0.02), P(HW, 14, y1 + 0.02), P(HW, 3, top), PLY);
+      for (const s of [-1, 1]) tri(P(s * HW, 3, top), P(s * HW, 14, y1 + 0.02), P(s * HW, 3, y1 - 0.3), FRAME);
+      collide.addRamp({ ax: -554, az: Z, bx: -543 + over, bz: Z, w: 2 * HW, yLow: y1, yHigh: top + slope * over, kind: 'ramp', name: 'Bluff Bomber roll-in' });
+    }
+    // --- the launch kicker, right on the lip
+    // --- the launch lip. Steep (49°) on purpose: the ride-off launch conserves energy, so
+    //     the vertical you get is speed × sin(ramp angle), NOT speed × slope. At the ~20 m/s
+    //     the roll-in delivers, a gentler 0.55 face only lifted ~3 m; 49° clears 6 m+.
+    kicker(-558, Z, YAW, 6, 2.6, 2.3, 'Bluff Bomber lip');
+    // --- NO landing ramp. An earlier version had a big mega-ramp landing transition down
+    //     the hillside, and it was both unnecessary and wrong: the natural bluff already
+    //     falls at ~22° here, which the land() plane projection turns into 21–27 m/s of
+    //     roll speed on its own. Worse, a structure that tall stands metres above the
+    //     terrain the rider is actually travelling on, and groundAt rejects any support
+    //     above yHint + stepUp — so riders passed straight through it.
+    spots.push({ name: 'The Bluff Bomber', x: -556, z: Z, r: 26, bonus: 400 });
+  }
+
+  // (b) THE COLLEGE ST SUPER KICKER, aimed west at the Battery Street intersection.
+  //     Placement note: the OSM College Street centreline through here actually runs at
+  //     z ≈ 20…28 and traffic.js puts cars 1.4–1.95 m either side of it, so a 6 m kicker
+  //     in the roadway proper would be straddling both lanes. The line players really bomb
+  //     (and the one scripts/playtest.mjs drives) is the open corridor at z ≈ −5, which
+  //     carries no road polyline at all — verified clear of walls and blockers within 5 m,
+  //     ~25 m off the nearest car path. Battery St crosses at x ≈ −492…−496.
+  {
+    kicker(-470, -5, Math.PI / 2, 6, 1.8, 3.6, 'College St super kicker');
+    spots.push({ name: 'College St super kicker', x: -470, z: -5, r: 14, bonus: 300 });
+  }
+
+  // ===========================================================================
   // handrails on every real staircase that has one
   // ===========================================================================
   {
