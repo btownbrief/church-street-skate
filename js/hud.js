@@ -1,5 +1,6 @@
 // DOM HUD: score, combo ticker, trick popups, spot callouts, balance meter, location label, minimap.
 import { clamp } from './util.js';
+import { CFG } from './config.js';
 
 export class Hud {
   constructor(root, worldInfo) {
@@ -19,12 +20,14 @@ export class Hud {
       </div>
       <div id="combo"><div id="combo-tricks"></div><div id="combo-total"></div></div>
       <div id="balance"><div id="balance-knob"></div></div>
+      <div id="charge"><i></i><b></b></div>
       <div id="popups"></div>
       <div id="callout"></div>
       <canvas id="minimap" width="220" height="220"></canvas>
       <div id="speed"></div>`;
     this.el = { score: root.querySelector('#score-val'), best: root.querySelector('#best-val'), loc: root.querySelector('#loc-name'), combo: root.querySelector('#combo'), comboTricks: root.querySelector('#combo-tricks'), comboTotal: root.querySelector('#combo-total'), balance: root.querySelector('#balance'), knob: root.querySelector('#balance-knob'), popups: root.querySelector('#popups'), callout: root.querySelector('#callout'), map: root.querySelector('#minimap'), speed: root.querySelector('#speed'), btnMap: root.querySelector('#btn-map'), btnPause: root.querySelector('#btn-pause'),
-      special: root.querySelector('#m-special > i'), flow: root.querySelector('#m-flow > i'), mSpecial: root.querySelector('#m-special'), letters: root.querySelector('#letters'), timer: root.querySelector('#timer') };
+      special: root.querySelector('#m-special > i'), flow: root.querySelector('#m-flow > i'), mSpecial: root.querySelector('#m-special'), letters: root.querySelector('#letters'), timer: root.querySelector('#timer'),
+      charge: root.querySelector('#charge'), chargeFill: root.querySelector('#charge > i'), chargeBonus: root.querySelector('#charge > b') };
     this.shownScore = 0; this.mapOn = true; this.comboFlash = 0; this._lastLoc = ''; this._locT = 0; this._calloutT = 0;
     this._special = -1; this._flow = -1; this._lettersKey = ''; this._timerTxt = '';
     this.combo = [];                      // reused scratch for the combo ticker (no per-frame alloc)
@@ -81,6 +84,11 @@ export class Hud {
     let liveName = null, livePts = 0;
     if (sk.state === 'grind' && sk.grind) { liveName = sk.grind.type + (sk.grind.edge.name ? ' · ' + sk.grind.edge.name : ''); livePts = 80 + 90 * sk.grind.time; }
     else if (sk.state === 'manual' && sk.manual) { liveName = sk.manual.nose ? 'Nose Manual' : 'Manual'; livePts = 60 + 70 * sk.manual.time; }
+    else if (sk.state === 'air' && Math.abs(sk.spinAccum) > 1.9) {
+      // live spin readout: you can watch the rotation build toward the next 180
+      const deg = Math.floor(Math.abs(sk.spinAccum) / Math.PI * 180 / 10) * 10;
+      liveName = (sk.spinAccum > 0 ? 'FS ' : 'BS ') + deg + '°'; livePts = 0;
+    }
     if (nReal || liveName) {
       this.combo.length = 0;
       for (const t of sk.combo) if (!t.silent) this.combo.push(t.name);
@@ -113,6 +121,17 @@ export class Hud {
         this.el.letters.innerHTML = this.letters.all.map(c => `<b class="${this.letters.got.has(c) ? 'got' : ''}">${c}</b>`).join('');
       }
     }
+    // OLLIE CHARGE bar: yellow = how loaded the pop is, green = the extra the current
+    // speed adds on top (grows as you gather speed mid-charge — tuck downhill and watch it)
+    if (sk.charging) {
+      this.el.charge.classList.add('on');
+      const frac = clamp(sk.charge / CFG.ollieCharge, 0, 1);
+      const bonus = frac * 0.30 * clamp(sk.speed / 28, 0, 1);
+      const fillPct = frac / 1.30 * 100;
+      this.el.chargeFill.style.width = fillPct.toFixed(1) + '%';
+      this.el.chargeBonus.style.left = fillPct.toFixed(1) + '%';
+      this.el.chargeBonus.style.width = (bonus / 1.30 * 100).toFixed(1) + '%';
+    } else this.el.charge.classList.remove('on');
     const mph = Math.round(sk.speed * 2.237);
     if (this._mph !== mph) { this._mph = mph; this.el.speed.textContent = mph + ' mph'; }
     if (this.mapOn) this.drawMap(sk);

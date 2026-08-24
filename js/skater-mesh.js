@@ -309,7 +309,7 @@ export class SkaterMesh {
       pitch = (sk.manual && sk.manual.nose ? -1 : 1) * 0.44 + bal * 0.09;
     } else if (grind && sk.grind) {
       const ty = sk.grind.type;
-      pitch = ty.indexOf('5-0') >= 0 ? 0.32 : ty.indexOf('Nosegrind') >= 0 ? -0.32 : 0;
+      pitch = ty.indexOf('5-0') >= 0 ? 0.32 : ty.indexOf('Nosegrind') >= 0 ? -0.32 : (ty.indexOf('Smith') >= 0 || ty.indexOf('Feeble') >= 0) ? 0.24 : 0;
     }
     if (!air) boardY += 0.205 * Math.abs(Math.sin(pitch));
     if (sk.flip) {
@@ -390,6 +390,8 @@ export class SkaterMesh {
     if (grabName === 'Indy') { sRoll += 0.34 * grab; sYaw += 0.20 * grab; }
     else if (grabName === 'Melon') { sRoll -= 0.30 * grab; sYaw -= 0.16 * grab; }
     else if (grabName === 'Nosegrab') { sPitch += 0.34 * grab; sYaw -= 0.40 * grab; }
+    else if (grabName === 'Tailgrab') { sPitch -= 0.22 * grab; sYaw += 0.30 * grab; }
+    else if (grabName === 'Method') { sRoll -= 0.42 * grab; sPitch += 0.12 * grab; sYaw -= 0.20 * grab; }
     if (bail) { sPitch = -0.35; sRoll = 0; sYaw = -1.3; }
     this.spinePitch = damp(this.spinePitch, sPitch, 12, dt);
     this.spineYaw = damp(this.spineYaw, sYaw, 10, dt);
@@ -453,7 +455,8 @@ export class SkaterMesh {
     if (grab > 0.01 && grabName) {
       const dy = this.bY + 0.11;
       if (grabName === 'Indy') { rhx = lerp(rhx, 0.15, grab); rhy = lerp(rhy, dy, grab); rhz = lerp(rhz, 0.03, grab); }
-      else if (grabName === 'Melon') { lhx = lerp(lhx, -0.15, grab); lhy = lerp(lhy, dy, grab); lhz = lerp(lhz, -0.06, grab); }
+      else if (grabName === 'Melon' || grabName === 'Method') { lhx = lerp(lhx, -0.15, grab); lhy = lerp(lhy, dy, grab); lhz = lerp(lhz, -0.06, grab); }
+      else if (grabName === 'Tailgrab') { rhx = lerp(rhx, 0.02, grab); rhy = lerp(rhy, dy, grab); rhz = lerp(rhz, 0.30, grab); }
       else { lhx = lerp(lhx, -0.02, grab); lhy = lerp(lhy, dy + 0.05, grab); lhz = lerp(lhz, -0.34, grab); }
     }
     const hRate = grab > 0.01 ? 24 : 16;

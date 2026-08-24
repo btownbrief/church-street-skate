@@ -320,6 +320,165 @@ checks.letters = async () => {
     `route '${r.route}', collected ${r.got.join('')}, full-set bonus fired=${r.all}, HUD tray '${r.tray}'`);
 };
 
+// ===== wave 3: feel + switch riding + cars + street megas =====================
+
+checks.switchride = async () => {
+  // fakie steering matches forward steering (camera-relative), and W pushes switch
+  const r = await ev(() => {
+    const heading = () => { const d = window.__dbg(); return Math.atan2(-d.vel[0], -d.vel[2]); };
+    const wrap = (a) => { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; };
+    window.__tp(-440, 10, -Math.PI / 2, 8);        // College z=10 corridor, clear both ways
+    const f0 = heading();
+    window.__sim(0.45, ['ArrowRight']);
+    const fwdTurn = wrap(heading() - f0);
+    window.__tp(-440, 10, Math.PI / 2, 0);         // facing west; fakie creep rolls east
+    window.__sim(1.6, ['ArrowDown']);
+    const h0 = heading();
+    window.__sim(0.45, ['ArrowDown', 'ArrowRight']);
+    const fakieTurn = wrap(heading() - h0);
+    window.__tp(-440, 10, Math.PI / 2, 0);
+    window.__sim(1.6, ['ArrowDown']);
+    window.__sim(3.5, ['ArrowUp']);                // W while rolling switch
+    const d = window.__dbg(); const fv = [-Math.sin(d.yaw), -Math.cos(d.yaw)];
+    const switchSp = d.vel[0] * fv[0] + d.vel[2] * fv[1];
+    return { fwdTurn: +fwdTurn.toFixed(2), fakieTurn: +fakieTurn.toFixed(2), switchSp: +switchSp.toFixed(1) };
+  });
+  report('fakie steering matches forward', Math.sign(r.fwdTurn) === Math.sign(r.fakieTurn) && Math.abs(r.fakieTurn) > 0.15, JSON.stringify(r));
+  report('W pushes switch at full speed', r.switchSp < -11, `fwdSpeed ${r.switchSp} (negative = switch)`);
+};
+
+checks.tuck = async () => {
+  // charging = a tuck: more downhill gravity, less rolling friction, and the HUD charge
+  // bar shows the pop with its speed-bonus segment
+  const r = await ev(() => {
+    window.__tp(-282, 141, Math.PI / 2, 10);       // Main St north corridor, downhill west
+    window.__sim(2.2);
+    const coast = Math.hypot(window.__dbg().vel[0], window.__dbg().vel[2]);
+    window.__tp(-282, 141, Math.PI / 2, 10);
+    window.__press('Space'); window.__sim(2.2);
+    const tucked = Math.hypot(window.__dbg().vel[0], window.__dbg().vel[2]);
+    const el = document.querySelector('#charge');
+    const bar = { on: el.classList.contains('on'), fill: el.querySelector('i').style.width, bonus: el.querySelector('b').style.width };
+    window.__release('Space'); window.__sim(0.4);
+    return { coast: +coast.toFixed(1), tucked: +tucked.toFixed(1), bar };
+  });
+  report('tuck gains downhill speed', r.tucked > r.coast + 1.5, `coast ${r.coast} vs tucked ${r.tucked} m/s`);
+  report('charge bar shows with speed bonus', r.bar.on && parseFloat(r.bar.fill) > 50 && parseFloat(r.bar.bonus) > 3, JSON.stringify(r.bar));
+};
+
+checks.bigairland = async () => {
+  // landing assist + widened big-air tolerance: come in crooked off a long air, land riding
+  const r = await ev(() => {
+    window.__air(-2, window.__world.collide.groundAt(-2, -70, 200, 300).y + 5.5, -70, 0, 0.3, 2, -13);
+    window.__sim(0.35, ['ArrowRight']);            // put real rotation on it
+    for (let i = 0; i < 240; i++) { window.__sim(1 / 60); const d = window.__dbg(); if (d.state === 'ride') return { state: 'ride', sp: +Math.hypot(d.vel[0], d.vel[2]).toFixed(1) }; if (d.state === 'bail') return { state: 'bail:' + d.why }; }
+    return { state: 'none' };
+  });
+  report('crooked big air lands (assist + tolerance)', r.state === 'ride', JSON.stringify(r));
+};
+
+checks.cars = async () => {
+  const r = await ev(() => {
+    // roof rails registered
+    const nEdges = window.__world.collide.all.edges.filter(e => e.name === 'Car roof').length;
+    // ride up and over: try a handful of cars (some park against walls — that bail is real)
+    const cars = window.__world.collide.all.surfaces.filter(s => s.name === 'Parked car');
+    let ride = null;
+    for (let ci = 0; ci < Math.min(10, cars.length) && !ride; ci++) {
+      const c = cars[ci * 7 % cars.length];
+      const ax = Math.sin(c.yaw), az = Math.cos(c.yaw);
+      for (const sgn of [1, -1]) {
+        window.__tp(c.x + sgn * ax * 6.5, c.z + sgn * az * 6.5, Math.atan2(sgn * ax, sgn * az), 8);
+        let rodeCar = false, bail = null;
+        for (let i = 0; i < 180; i++) {
+          window.__sim(1 / 60); const d = window.__dbg();
+          if (d.state === 'ride' && d.ground === 'car') rodeCar = true;
+          if (d.state === 'bail') { bail = d.why; break; }
+          if (rodeCar && d.ground !== 'car' && d.state === 'ride' && i > 40) break;
+        }
+        if (rodeCar && !bail) { ride = true; break; }
+      }
+    }
+    // roof-edge grind snap
+    const edge = window.__world.collide.all.edges.find(e => e.name === 'Car roof');
+    const ux = (edge.bx - edge.ax) / edge.len, uz = (edge.bz - edge.az) / edge.len;
+    const mx = (edge.ax + edge.bx) / 2, mz = (edge.az + edge.bz) / 2;
+    window.__air(mx - ux * 1.2, edge.ay + 0.35, mz - uz * 1.2, Math.atan2(-ux, -uz), ux * 4, -1.2, uz * 4);
+    let grind = false;
+    for (let i = 0; i < 40; i++) { window.__sim(1 / 60); if (window.__dbg().state === 'grind') { grind = true; break; } }
+    return { nEdges, ride: !!ride, grind };
+  });
+  report('parked cars ride up and over', r.ride, JSON.stringify(r));
+  report('car roof rails grind', r.nEdges > 100 && r.grind, `${r.nEdges} roof edges, snapped=${r.grind}`);
+};
+
+checks.streetmegas = async () => {
+  const r = await ev(() => {
+    const out = {};
+    for (const name of ['Main St mega kicker', 'Battery St launch']) {
+      const rr = window.__world.collide.all.ramps.find(r => r.name === name && r.yHigh - r.yLow > 1.5);
+      if (!rr) { out[name] = { err: 'missing' }; continue; }
+      const dx = rr.ux, dz = rr.uz;
+      window.__tp(rr.ax - dx * 22, rr.az - dz * 22, Math.atan2(-dx, -dz), 0);
+      let peak = 0, y0 = null, end = null;
+      for (let i = 0; i < 600; i++) {
+        window.__sim(1 / 60, i < 140 ? ['ArrowUp'] : []);
+        const d = window.__dbg();
+        if (d.state === 'air') { if (y0 === null) y0 = d.pos[1]; peak = Math.max(peak, d.pos[1] - y0); }
+        if (y0 !== null && (d.state === 'ride' || d.state === 'bail')) { end = d.state + (d.why ? ':' + d.why : ''); break; }
+      }
+      out[name] = { peak: +peak.toFixed(1), end };
+    }
+    return out;
+  });
+  report('Main St mega kicker launches + lands', r['Main St mega kicker'].end === 'ride' && r['Main St mega kicker'].peak > 1.5, JSON.stringify(r['Main St mega kicker']));
+  report('Battery St launch launches + lands', r['Battery St launch'].end === 'ride' && r['Battery St launch'].peak > 1.5, JSON.stringify(r['Battery St launch']));
+};
+
+checks.spins = async () => {
+  const r = await ev(() => {
+    // spinning kickflip on a clear corridor: live readout + merged landing name
+    window.__tp(-440, 10, -Math.PI / 2, 10);
+    window.__sim(0.45, ['Space']);
+    window.__sim(0.05, ['KeyJ']);
+    let live = null;
+    for (let i = 0; i < 150; i++) {
+      window.__sim(1 / 60, ['ArrowLeft']);
+      const d = window.__dbg();
+      if (d.state === 'air') { const t = document.querySelector('#combo-tricks'); if (t && /\u00b0/.test(t.textContent)) live = t.textContent; }
+      if (d.state !== 'air' && i > 10) break;
+    }
+    const combo = window.__dbg().combo.join('|');
+    return { live, combo, state: window.__dbg().state };
+  });
+  report('live spin readout in the combo ticker', /\u00b0/.test(r.live || ''), JSON.stringify(r.live));
+  report('spin + flip merge into one name', /(FS|BS) \d+ (Kickflip|Heelflip|Hardflip|Varial|Laser|Inward|360)/.test(r.combo), r.combo);
+};
+
+checks.tricknames = async () => {
+  const r = await ev(() => {
+    const out = {};
+    window.__tp(-440, 10, -Math.PI / 2, 8); window.__sim(0.4, ['Space']);
+    window.__sim(0.06, ['ArrowLeft', 'KeyJ']); window.__sim(1.2);
+    out.hardflip = window.__dbg().combo.join('|');
+    window.__tp(-440, 10, -Math.PI / 2, 8); window.__sim(0.45, ['Space']);
+    window.__sim(0.6, ['ShiftLeft', 'ArrowDown']); window.__sim(1.0);
+    out.tailgrab = window.__dbg().combo.join('|');
+    const e = window.__world.collide.all.edges.find(e => e.name === 'Mall rail');
+    const ux = (e.bx - e.ax) / e.len, uz = (e.bz - e.az) / e.len;
+    const mx = (e.ax + e.bx) / 2, mz = (e.az + e.bz) / 2;
+    window.__air(mx - ux * 1.5, e.ay + 0.3, mz - uz * 1.5, Math.atan2(-ux, -uz), ux * 5, -1.5, uz * 5);
+    window.__press('ArrowRight');
+    out.smith = null;
+    for (let i = 0; i < 40; i++) { window.__sim(1 / 60); if (window.__dbg().state === 'grind') { window.__release('ArrowRight'); window.__sim(0.1); out.smith = document.querySelector('#combo-tricks').textContent; break; } }
+    window.__release('ArrowRight');
+    return out;
+  });
+  report('Hardflip fires on steer + flip', /Hardflip/.test(r.hardflip), r.hardflip);
+  report('Tailgrab fires on grab + back', /Tailgrab/.test(r.tailgrab), r.tailgrab);
+  report('Smith/Feeble grind fires on steer entry', /(Smith|Feeble)/.test(r.smith || ''), JSON.stringify(r.smith));
+};
+
 const all = want.length ? want : Object.keys(checks);
 for (const t of all) {
   if (!checks[t]) { console.log('no such check', t); continue; }

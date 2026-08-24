@@ -399,6 +399,23 @@ export function buildSkatepark(ctx) {
     spots.push({ name: 'College St super kicker', x: -470, z: 10, r: 14, bonus: 300 });
   }
 
+  // (c) TWO MORE STREET MEGAS. Same rules as (b): traffic.js runs cars only 1.4–1.95 m
+  //     either side of the OSM centreline and parks them ~1 m inside the kerb, so the
+  //     rideable corridor is the strip between the car lane and the parked line — every
+  //     coordinate here was checked headless against walls, blockers and both car paths.
+  {
+    // Main St hill, aimed west down the drop toward the waterfront. The roadway proper
+    // (z 130-134 here) carries cars and a bus stop/tree line at its south kerb; the wide
+    // north-side corridor at z 141 is clear from x -235 to -315 (surveyed headless).
+    kicker(-272, 141, Math.PI / 2, 6, 1.9, 2.1, 'Main St mega kicker');
+    spots.push({ name: 'Main St mega kicker', x: -272, z: 141, r: 14, bonus: 300 });
+    // Battery St, aimed west OFF the street over the waterfront slope — a natural
+    // mini-bluff: the ground west of the roadway falls away hard and the landing
+    // projection turns the drop back into roll speed.
+    kicker(-505.5, -150, Math.PI / 2, 5, 2.1, 2.2, 'Battery St launch');
+    spots.push({ name: 'Battery St launch', x: -505.5, z: -150, r: 14, bonus: 300 });
+  }
+
   // ===========================================================================
   // handrails on every real staircase that has one
   // ===========================================================================
