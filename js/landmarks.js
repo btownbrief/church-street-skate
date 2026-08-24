@@ -281,6 +281,13 @@ function makeMats() {
     limestone: L('limestone', 0xd3cab5),
     cream: L('cream', 0xe7dfc9),
     hoard: L('hoard', 0x2f5d7c),
+    deck: L('deck', 0x9c8663),
+    piling: L('piling', 0x5b4a39),
+    hull: L('hull', 0xeeece2),
+    hullNavy: L('hullNavy', 0x24405c),
+    hullRed: L('hullRed', 0x8e3a2f),
+    sail: L('sail', 0xf6f4ec),
+    rock: L('rock', 0x6b6862),
     lamp: new THREE.MeshBasicMaterial({ color: 0xffe6a8 }),
   };
 }
@@ -307,7 +314,7 @@ export function buildLandmarks(ctx) {
 
   const order = ['church', 'cityHall', 'firehouse', 'masonic', 'richardson', 'operaHouse', 'leunigs',
     'sweetwaters', 'marbleBank', 'riRa', 'savingsBank', 'burlingtonSquare', 'flynn', 'nectars',
-    'library', 'transit'];
+    'library', 'transit', 'waterfront'];
   for (const k of order) {
     try { if (L[k]) L[k](c); }
     catch (e) { console.warn('[landmarks] ' + k + ' failed: ' + e.message, e); }
@@ -1236,3 +1243,219 @@ L.transit = function (c) {
   }
   c.loc('GMT Transit Center', -138, -282, 16);
 };
+
+// ---------------------------------------------------------------- 16. Burlington Harbour
+// The lake end of every cross street. Nothing here is reachable — the level's west edge is
+// x ≈ −645 and the shoreline sits ~80 m beyond it — but this is the view the whole downtown
+// grid points at, and it was an empty plate of water.
+//
+// Built: the ECHO Leahy Center's massing at the foot of College; the community boathouse out
+// on its pier with the marina docks and moored boats; the Burlington Breakwater lying offshore
+// with a light at each end; the ferry-dock piers on their real OSM lines, with boats alongside.
+// Sources: docs/BURLINGTON-REFERENCE.md §3.16 (ECHO, the breakwater, Union Station, the FRAME)
+// and §1 "The view west". Massing and proportion only — no signage art or livery is copied.
+const LAKE = -33.5;        // Lake Champlain surface — must match LAKE_Y in ground.js
+const SHORE_X = -723;      // where the shingle apron crosses the waterline
+
+// a low-poly hull: narrow at the keel, flared to the deck, tapered toward the bow (+Z)
+function hullGeo(len, beam, h) {
+  return frustumGeo(beam * 0.46, len * 0.78, h, beam, len);
+}
+
+L.waterfront = function (c) {
+  const { mg, mats, ctx } = c;
+  const T = ctx.terrain;
+  const R = ctx.rng;
+  const rr = (a, b) => a + R() * (b - a);
+  // The whole harbour lands in the merged landmark meshes, which are never frustum-culled,
+  // so its triangles are paid for on every frame wherever the player is. Thin it on phones.
+  const mob = !!ctx.quality.mobile;
+
+  // ---- riprap along the waterline ------------------------------------------------------
+  // The shingle apron met the water as a clean geometric line. Burlington's shore is armoured
+  // with broken stone; a scattered rock course gives the edge something to be made of.
+  for (let z = -300; z < 210; z += (mob ? 10 : 5.5)) {
+    const n = mob ? 1 : 1 + (R() < 0.5 ? 1 : 0);
+    for (let k = 0; k < n; k++) {
+      const s = rr(1.5, 3.4);
+      mg.add(new THREE.IcosahedronGeometry(s, 0), mats.rock,
+        SHORE_X + rr(-4.5, 5.5), LAKE + rr(-1.1, 0.5), z + rr(-2.4, 2.4), rr(0, 6.28),
+        1, rr(0.45, 0.8), 1);
+    }
+  }
+
+  // ---- ECHO Leahy Center, 1 College St: low, glassy, right on the water --------------
+  {
+    const X = -672, Z = 58, W = 25, D = 42;          // W across (x), D along the shore (z)
+    const g0 = T.heightAt(X, Z);
+    const pts = [[X - W / 2, Z - D / 2], [X + W / 2, Z - D / 2], [X + W / 2, Z + D / 2], [X - W / 2, Z + D / 2]];
+    mg.add(wallsGeo(pts, g0 - 1.5, g0 + 7.4), mats.panel);
+    mg.add(capGeo(pts, g0 + 7.4), mats.concrete);
+    mg.add(wallsGeo(expandPoly(pts, 0.7), g0 + 7.0, g0 + 7.9), mats.stone);      // eaves band
+    // second floor, set back and shortened, so the mass steps down toward the water
+    const up = [[X - 9.5, Z - 18], [X + 7.5, Z - 18], [X + 7.5, Z + 8], [X - 9.5, Z + 8]];
+    mg.add(wallsGeo(up, g0 + 7.9, g0 + 12.4), mats.panel);
+    mg.add(capGeo(up, g0 + 12.4), mats.concrete);
+    mg.add(wallsGeo(expandPoly(up, 0.6), g0 + 12.0, g0 + 12.9), mats.stone);
+    // the lake elevation is a full-height glass wall between concrete fins
+    for (let k = 0; k < 7; k++) {
+      const z = Z - D / 2 + 3 + k * 6;
+      mg.add(B(1.0, 7.8, 1.1), mats.concrete, X - W / 2, g0 + 3.9, z);
+      mg.add(B(0.5, 6.4, 4.7), mats.glassLit, X - W / 2 - 0.25, g0 + 3.9, z + 3);
+    }
+    for (let k = 0; k < 4; k++) mg.add(B(0.5, 3.4, 5.4), mats.glassLit, X - 9.75, g0 + 10.2, Z - 15 + k * 6.4);
+    // landward elevation: a banded glass wall under a deep entrance canopy
+    for (let k = 0; k < 6; k++) mg.add(B(0.5, 5.2, 5.0), mats.glassLit, X + W / 2 + 0.25, g0 + 3.4, Z - D / 2 + 5 + k * 6.5);
+    for (let k = 0; k < 3; k++) mg.add(B(0.5, 3.2, 6.0), mats.glassLit, X + 7.75, g0 + 10.1, Z - 14 + k * 8.0);
+    mg.add(B(7.0, 0.45, 13), mats.concrete, X + W / 2 + 3.2, g0 + 5.4, Z);
+    for (const z of [Z - 5.4, Z + 5.4]) mg.add(CY(0.19, 0.19, 5.4, 6), mats.concrete, X + W / 2 + 6.2, g0 + 2.7, z);
+    c.sign(9.0, 0.9, 'ECHO LEAHY CENTER', { bg: '#1d4a55', fg: '#eaf3f2', size: 17, font: 'Helvetica, Arial, sans-serif' },
+      X + W / 2 + 0.5, g0 + 6.4, Z, Math.PI / 2);
+    ctx.collide.addPolygonWalls(pts, g0 + 7.4, 'ECHO Leahy Center');
+    c.loc('ECHO Leahy Center', X, Z, 26);
+  }
+
+  // ---- the community boathouse, out on its pier at the foot of College ---------------
+  const deckY = LAKE + 1.5;
+  const pile = (x, z, top) => mg.add(CY(0.16, 0.2, top - (LAKE - 2.6), 6), mats.piling, x, (top + LAKE - 2.6) / 2, z);
+  // a rectangular timber deck with a piling under every corner of a 6 m grid
+  function deck(x0, z0, x1, z1, y) {
+    const w = Math.abs(x1 - x0), d = Math.abs(z1 - z0);
+    mg.add(B(w, 0.34, d), mats.deck, (x0 + x1) / 2, y - 0.17, (z0 + z1) / 2);
+    for (let x = Math.min(x0, x1) + 1; x <= Math.max(x0, x1) - 0.5; x += 6)
+      for (let z = Math.min(z0, z1) + 1; z <= Math.max(z0, z1) - 0.5; z += 6) pile(x, z, y - 0.1);
+  }
+  {
+    const BX = -748, BZ = 24;
+    deck(BX - 17, BZ - 11, BX + 17, BZ + 11, deckY);
+    deck(SHORE_X + 8, BZ - 2.4, BX + 17, BZ + 2.4, deckY);      // the gangway in from the shingle
+    // two storeys of white clapboard with a deep verandah, a dark green hipped roof, a cupola
+    mg.add(B(20, 5.2, 13), mats.white, BX, deckY + 2.6, BZ);
+    mg.add(B(21.8, 0.3, 14.8), mats.deck, BX, deckY + 5.35, BZ);          // upper verandah floor
+    mg.add(B(16.5, 4.4, 10.5), mats.white, BX, deckY + 7.7, BZ);
+    mg.add(frustumGeo(18.4, 12.4, 3.4, 4, 2.6), mats.spire, BX, deckY + 9.9, BZ);
+    mg.add(B(2.8, 2.2, 2.8), mats.white, BX, deckY + 14.4, BZ);
+    mg.add(frustumGeo(3.4, 3.4, 2.0), mats.spire, BX, deckY + 15.5, BZ);
+    for (let k = 0; k < 5; k++) for (const s of [-1, 1]) {
+      mg.add(B(1.7, 2.6, 0.3), mats.glassLit, BX - 6.4 + k * 3.2, deckY + 2.7, BZ + s * 6.6);
+      mg.add(B(1.5, 2.1, 0.3), mats.glassLit, BX - 5.6 + k * 2.8, deckY + 7.9, BZ + s * 5.4);
+    }
+    // verandah posts + a rail line all the way round
+    for (let k = 0; k <= 8; k++) {
+      const x = BX - 10.4 + k * 2.6;
+      for (const s of [-1, 1]) {
+        mg.add(CY(0.1, 0.1, 5.2, 5), mats.white, x, deckY + 2.6, BZ + s * 7.2);
+        mg.add(CY(0.09, 0.09, 4.4, 5), mats.white, x, deckY + 7.7, BZ + s * 7.2);
+      }
+    }
+    for (const zz of [BZ - 7.2, BZ + 7.2]) {
+      mg.add(B(21.6, 0.12, 0.12), mats.white, BX, deckY + 1.05, zz);
+      mg.add(B(21.6, 0.14, 0.14), mats.white, BX, deckY + 6.6, zz);
+      mg.add(B(21.6, 0.14, 0.14), mats.white, BX, deckY + 9.6, zz);
+    }
+    c.sign(7.0, 0.7, 'BURLINGTON COMMUNITY BOATHOUSE', { bg: '#f2efe4', fg: '#20364a', size: 13, font: 'Helvetica, Arial, sans-serif' },
+      BX + 10.05, deckY + 4.4, BZ, Math.PI / 2);
+    c.loc('Community Boathouse', BX, BZ, 30);
+
+    // ---- the marina: a main walkway south with finger docks and boats alongside -------
+    const MX = BX - 2;
+    deck(MX - 1.8, BZ + 11, MX + 1.8, BZ + 116, deckY - 0.15);
+    for (let k = 0; k < (mob ? 4 : 7); k++) {
+      const z = BZ + 22 + k * (mob ? 24 : 14);
+      deck(MX - 26, z - 1.4, MX - 1.8, z + 1.4, deckY - 0.15);
+      for (const side of [-1, 1]) {
+        if (R() < 0.22) continue;
+        boat(c, MX - 6 - R() * 16, z + side * 4.6, Math.PI / 2, rr(7.5, 11.5), false);
+      }
+    }
+    // a few boats moored off the north side of the boathouse too
+    for (let k = 0; k < (mob ? 2 : 4); k++) boat(c, BX - 24 - k * 9, BZ - 16 - R() * 26, Math.PI / 2 + rr(-0.2, 0.2), rr(8, 12), false);
+  }
+
+  // ---- the mooring field: sails out in the harbour ------------------------------------
+  for (let k = 0; k < (mob ? 7 : 16); k++) {
+    const x = -770 - R() * 150, z = -320 + R() * 520;
+    if (x > SHORE_X - 30) continue;
+    boat(c, x, z, rr(0, 6.28), rr(8, 14), R() < 0.45);
+  }
+
+  // ---- the Burlington Breakwater: 2,517 ft of stone lying offshore --------------------
+  // "a long low line of stone offshore… reads as a horizontal dash on the water" (§3.16)
+  {
+    const BX = -880, TOP = LAKE + 1.9;
+    const runs = [[-392, -74], [-26, 244]];          // the harbour entrance is the gap between them
+    for (const [z0, z1] of runs) {
+      const n = Math.round((z1 - z0) / (mob ? 46 : 26));
+      for (let k = 0; k < n; k++) {
+        const z = z0 + (z1 - z0) * (k + 0.5) / n, d = (z1 - z0) / n + 0.4;
+        mg.add(frustumGeo(13, d, TOP - (LAKE - 3.2), 7.4, d), mats.rock, BX + Math.sin(k * 1.7) * 0.7, LAKE - 3.2, z);
+      }
+    }
+    // the two breakwater lights: a squat white tower with a dark lantern, one at each head
+    for (const z of [-392, 244]) {
+      mg.add(frustumGeo(3.4, 3.4, 5.0, 2.6, 2.6), mats.white, BX, TOP, z);
+      mg.add(B(2.2, 1.6, 2.2), mats.iron, BX, TOP + 5.8, z);
+      mg.add(frustumGeo(2.6, 2.6, 1.1), mats.steelRed, BX, TOP + 6.6, z);
+      mg.add(new THREE.SphereGeometry(0.45, 6, 4), mats.lamp, BX, TOP + 5.9, z);
+    }
+  }
+
+  // ---- the ferry dock and Perkins Pier, on their real OSM pier lines ------------------
+  {
+    let piers = 0;
+    for (const l of ctx.WORLD.lines || []) {
+      if (l.kind !== 'man_made:pier' || !l.pts || l.pts.length < 2) continue;
+      const w = (l.tags && l.tags.name) ? 3.4 : 6.0;   // A/B Dock are finger docks; the rest are the quays
+      for (let i = 0; i < l.pts.length - 1; i++) {
+        const a = l.pts[i], b = l.pts[i + 1];
+        const len = Math.hypot(b[0] - a[0], b[1] - a[1]); if (len < 1) continue;
+        const yaw = Math.atan2(b[0] - a[0], b[1] - a[1]);
+        mg.add(B(w, 0.4, len), mats.deck, (a[0] + b[0]) / 2, deckY - 0.2, (a[1] + b[1]) / 2, yaw);
+        const n = Math.max(1, Math.round(len / 9));
+        for (let k = 0; k <= n; k++) {
+          const t = k / n, px = a[0] + (b[0] - a[0]) * t, pz = a[1] + (b[1] - a[1]) * t;
+          for (const s of [-1, 1]) pile(px + Math.cos(yaw) * s * (w / 2 - 0.4), pz - Math.sin(yaw) * s * (w / 2 - 0.4), deckY - 0.3);
+        }
+      }
+      piers++;
+      // moor something to each of the named finger docks
+      if (l.tags && l.tags.name) for (let k = 0; k < (mob ? 1 : 3); k++) {
+        const t = 0.2 + k * 0.3, a = l.pts[0], b = l.pts[1];
+        boat(c, a[0] + (b[0] - a[0]) * t - 5, a[1] + (b[1] - a[1]) * t, Math.PI / 2, rr(8, 11), false);
+      }
+    }
+    // the Lake Champlain ferry, tied up at the King Street quay
+    const FX = -640, FZ = 330;
+    mg.add(hullGeo(46, 13, 3.4), mats.hull, FX, LAKE - 1.2, FZ, 0.06);
+    mg.add(B(11, 3.0, 26), mats.hull, FX, LAKE + 3.7, FZ, 0.06);
+    mg.add(B(7.5, 2.4, 9), mats.white, FX, LAKE + 6.4, FZ - 6, 0.06);
+    mg.add(B(1.0, 4.5, 1.0), mats.iron, FX, LAKE + 9.4, FZ - 6, 0.06);
+    c.loc('Ferry Dock', -600, 330, 60);
+    console.info('[landmarks] waterfront: ' + piers + ' piers');
+  }
+};
+
+// one low-poly boat. `sailing` raises a main and a jib; moored boats sit with bare poles.
+function boat(c, x, z, yaw, len, sailing) {
+  const { mg, mats, ctx } = c;
+  const R = ctx.rng;
+  const beam = len * 0.31, h = len * 0.26;
+  const hullMat = [mats.hull, mats.hull, mats.hullNavy, mats.hullRed][Math.floor(R() * 4)] || mats.hull;
+  const free = h * 0.52;                    // freeboard: how much hull stands out of the water
+  mg.add(hullGeo(len, beam, h), hullMat, x, LAKE - (h - free), z, yaw);
+  mg.add(B(beam * 0.66, h * 0.5, len * 0.3), mats.white, x, LAKE + free + h * 0.22, z, yaw);   // coachroof
+  const mast = len * 1.15;
+  mg.add(CY(0.06, 0.11, mast, 5), mats.panel,
+    x + Math.sin(yaw) * len * 0.06, LAKE + free + mast / 2, z + Math.cos(yaw) * len * 0.06, yaw);
+  if (sailing) {
+    const s = new THREE.BufferGeometry();
+    const hl = len * 0.42, hh = mast * 0.86;
+    const a = [0, 0, hl * 0.55], b = [0, hh, -hl * 0.12], d = [0, 0, -hl * 0.75];
+    // both faces, because the merged landmark materials are single-sided
+    s.setAttribute('position', new THREE.Float32BufferAttribute([...a, ...b, ...d, ...a, ...d, ...b], 3));
+    s.computeVertexNormals();
+    mg.add(s, mats.sail, x, LAKE + free, z, yaw + 0.22);
+  } else {
+    mg.add(B(0.1, 0.1, len * 0.46), mats.panel, x, LAKE + free + 1.6, z, yaw);                 // boom
+  }
+}

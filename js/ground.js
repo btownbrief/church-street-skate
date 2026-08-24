@@ -26,6 +26,17 @@ const CV = { URBAN: 0, GREEN: 1, WATER: 2, DIRT: 3, PAVED: 4 };
 
 const LAKE_Y = -33.5;              // Lake Champlain surface, local metres (29.6 m ASL vs origin 63.44)
 
+// Waterfront Park: the lawn between Lake Street and the harbour, College Street north.
+// OSM has no polygon for it — the extract stops at the water's edge and the park is tagged
+// only as the "Waterfront" neighbourhood — so the shape is authored here, traced along the
+// west kerb of the mapped Lake Street centreline out to the shore.
+const WATERFRONT_LAWN = [
+  [-706, 34], [-596, 31], [-578, 16], [-582, 2], [-624, -104], [-647, -168],
+  [-670, -228], [-678, -250], [-706, -254],
+];
+// the harbour promenade / Burlington Greenway through the park, north–south along the shore
+const PROMENADE = [[-685, 30], [-683, -30], [-684, -110], [-687, -180], [-688, -248]];
+
 // ---------------------------------------------------------------------------
 // tiny geometry accumulator: one flat array set per material, merged at the end
 // ---------------------------------------------------------------------------
@@ -147,7 +158,9 @@ export function buildGround(ctx) {
   const near = (x, z, m) => x > box.minX - m && x < box.maxX + m && z > box.minZ - m && z < box.maxZ + m;
 
   const streets = buildStreets(ctx, B, gridH, near, rnd);
+  buildWaterfrontGround(ctx, B, gridH);
   buildAreas(ctx, B, gridH, near);
+  buildPaths(ctx, B, gridH, near, park);
   const churchPts = buildMall(ctx, B, gridH, near);
   if (park && plaza) buildPark(ctx, B, gridH, park, plaza);
   buildSteps(ctx, B, gridH, near);
@@ -213,6 +226,7 @@ function paintCover(cover, WORLD, nx, nz, gs, LX0, LZ0) {
   for (const a of WORLD.areas || []) {
     if (GREEN_KINDS.includes(a.kind)) stamp(a.pts, CV.GREEN);
   }
+  stamp(WATERFRONT_LAWN, CV.GREEN);
   for (const a of WORLD.areas || []) {
     if (a.kind === 'amenity:parking') stamp(a.pts, CV.PAVED);
     else if (a.kind === 'landuse:construction') stamp(a.pts, CV.DIRT);
@@ -268,17 +282,24 @@ function buildTerrain(scene, cover, nx, nz, gs, LX0, LZ0, H, rnd, mobile) {
 
 // flat apron running out from the data edge so the world never visibly ends
 function buildSkirt(scene, nx, nz, gs, LX0, LZ0, H) {
-  const OUT = 1400;
+  const OUT = 1400, SHORE = 16;
   const t = new Tris();
-  const c = C(0x7d786f), cw = C(0x51707f);
-  const ptH = (i, j) => { const h = H(i, j); return h < -25 ? -34.6 : h; };
+  const c = C(0x7d786f), cw = C(0x51707f), shingle = C(0x6d6a63);
+  const ptH = (i, j) => { const h = H(i, j); return h < -25 ? -34.8 : h; };
   const colFor = (h) => (h <= -34 ? cw : c);
+  // Where the apron falls to the lake it now does so over ~26 m and then runs flat, instead of
+  // sliding 1,400 m at 0.2%: the old ramp turned Burlington Harbour into a tan mudflat running
+  // out to the horizon. Beyond the shore band the flat apron sits just under the lake plane.
   const edge = (ai, aj, bi, bj, ox, oz) => {
     const ax = LX0 + ai * gs, az = LZ0 + aj * gs, bx = LX0 + bi * gs, bz = LZ0 + bj * gs;
     const ah = ptH(ai, aj), bh = ptH(bi, bj);
+    const wet = ah <= -34 || bh <= -34;
+    const L = Math.hypot(ox, oz) || 1, sx = ox / L * SHORE, sz = oz / L * SHORE;
     const A = [ax, H(ai, aj), az], Bp = [bx, H(bi, bj), bz];
+    const As = [ax + sx, ah, az + sz], Bs = [bx + sx, bh, bz + sz];
     const Ao = [ax + ox, ah, az + oz], Bo = [bx + ox, bh, bz + oz];
-    t.quad(A, Ao, Bo, Bp, colFor(ah));
+    t.quad(A, As, Bs, Bp, wet ? shingle : c);
+    t.quad(As, Ao, Bo, Bs, colFor(ah));
   };
   for (let i = 0; i < nx; i++) { edge(i + 1, 0, i, 0, 0, -OUT); edge(i, nz, i + 1, nz, 0, OUT); }
   for (let j = 0; j < nz; j++) { edge(0, j, 0, j + 1, -OUT, 0); edge(0 + nx, j + 1, nx, j, OUT, 0); }
@@ -591,6 +612,80 @@ function buildAreas(ctx, B, gridH, near) {
       drape(B.concrete, a.pts, gridH, 0.03, shade(PAVED, 0.12), 9);
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Waterfront Park: the lawn strip between Lake Street and the harbour, plus the
+// paved Greenway promenade that runs the length of it.
+// ---------------------------------------------------------------------------
+function buildWaterfrontGround(ctx, B, gridH) {
+  const { collide, locations, spots } = ctx;
+  const LAWN = C(0x6d8b48), WALK = C(0xbdb7a9), BIKE = C(0x4b4d51);
+  const shade = (base, amt) => (x, z) => {
+    const t = 1 + amt * ((((hashStr((x | 0) + ':' + (z | 0)) >>> 9) & 255) / 255) - 0.5);
+    return [base[0] * t, base[1] * t, base[2] * t];
+  };
+  drape(B.green, WATERFRONT_LAWN, gridH, 0.025, shade(LAWN, 0.14), 9);
+
+  // the promenade: a 3.2 m asphalt bike path with a concrete walking apron on the lake side
+  const path = resample(PROMENADE, 6);
+  ribbon(B.concrete, path.map(p => [p[0] - 2.6, p[1]]), gridH, 3.0, 0.05, WALK);
+  ribbon(B.asphalt, path, gridH, 3.2, 0.055, BIKE);
+
+  locations.push({ name: 'Waterfront Park', pts: WATERFRONT_LAWN });
+  spots.push({ name: 'Waterfront Park', x: -668, z: -110, r: 46, bonus: 300 });
+}
+
+// ---------------------------------------------------------------------------
+// Mapped footways and cycleways that are NOT already covered by a street's own
+// sidewalk band — park paths, the Burlington Greenway, plaza links, the shore
+// promenade. Without these the whole waterfront reads as untouched ground.
+// ---------------------------------------------------------------------------
+function buildPaths(ctx, B, gridH, near, park) {
+  const { WORLD } = ctx;
+  const mobile = !!ctx.quality.mobile;
+  const WALK = C(0xc0bbad), BIKE = C(0x4b4d51);
+  // every car street already draws a concrete band either side; anything inside that band
+  // would only z-fight with it
+  const covered = [];
+  for (const r of WORLD.roads || []) {
+    if (!CAR_KINDS.includes(r.kind) || !r.pts || r.pts.length < 2) continue;
+    const hw = roadWidth(r) / 2 + 4.4;
+    for (let i = 1; i < r.pts.length; i++) covered.push([r.pts[i - 1][0], r.pts[i - 1][1], r.pts[i][0], r.pts[i][1], hw * hw]);
+  }
+  const onStreet = (x, z) => {
+    for (const s of covered) {
+      const dx = s[2] - s[0], dz = s[3] - s[1], l2 = dx * dx + dz * dz || 1;
+      let t = ((x - s[0]) * dx + (z - s[1]) * dz) / l2; t = clamp(t, 0, 1);
+      const px = s[0] + dx * t - x, pz = s[1] + dz * t - z;
+      if (px * px + pz * pz < s[4]) return true;
+    }
+    return false;
+  };
+  const inPark = (x, z) => !!park && pointInPoly(x, z, park.pts);   // buildPark draws those itself
+
+  let n = 0;
+  for (const r of WORLD.roads || []) {
+    const bike = r.kind === 'cycleway';
+    if (!bike && r.kind !== 'footway' && r.kind !== 'path') continue;
+    if (!r.pts || r.pts.length < 2 || !r.pts.some(p => near(p[0], p[1], 60))) continue;
+    const pts = resample(r.pts, mobile ? 9 : 6);
+    // walk the polyline and emit only the stretches that stand clear of a street
+    let run = [];
+    const flush = () => {
+      if (run.length > 1) {
+        ribbon(bike ? B.asphalt : B.concrete, run, gridH, bike ? 3.2 : 2.2, bike ? 0.05 : 0.045, bike ? BIKE : WALK);
+        n++;
+      }
+      run = [];
+    };
+    for (const p of pts) {
+      if (!near(p[0], p[1], 60) || onStreet(p[0], p[1]) || inPark(p[0], p[1])) flush();
+      else run.push(p);
+    }
+    flush();
+  }
+  return n;
 }
 
 function stallLines(paint, pts, gridH) {

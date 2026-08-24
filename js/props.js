@@ -903,6 +903,8 @@ export function buildProps(ctx) {
   const TREE_STREETS = [
     [['Main Street'], mobile ? 26 : 16, 3.2, [4.2, 5.8], [5.0, 6.8]],
     [['College Street', 'Pearl Street', 'Saint Paul Street', 'Cherry Street', 'Bank Street'], mobile ? 56 : 32, 2.8, [3.8, 5.4], [4.4, 6.2]],
+    // the run down to the lake: Battery St along the bluff, then Lake St and King St
+    [['Battery Street', 'Lake Street', 'King Street'], mobile ? 60 : 34, 3.0, [3.8, 5.4], [4.4, 6.2]],
   ];
   for (const [names, sp, out, hr, wr] of TREE_STREETS) {
     walkStreet(names, sp, (cx, cz, nx, nz, hw) => {
@@ -1111,6 +1113,62 @@ export function buildProps(ctx) {
     }
     solids.push(merge(gp));
   }
+  // ---- 6g. Waterfront Park: the lawn, the Greenway promenade, its benches and lights ---
+  // The park lawn and its promenade are laid down by ground.js (WATERFRONT_LAWN / PROMENADE);
+  // this dresses them. Most of it sits just outside the play rectangle — the level's west
+  // edge is x ≈ −645 — but it is what you look at from the end of every cross street, and
+  // the harbour side of the map was completely bare.
+  let nWfTree = 0, nWfBench = 0, nWfLamp = 0;
+  {
+    const PROM = [[-685, 30], [-683, -30], [-684, -110], [-687, -180], [-688, -248]];
+    const promAt = (t) => {                       // t in metres from the south end
+      let acc = 0;
+      for (let i = 1; i < PROM.length; i++) {
+        const a = PROM[i - 1], b = PROM[i], L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+        if (acc + L >= t || i === PROM.length - 1) {
+          const u = Math.min(1, (t - acc) / L);
+          return { x: a[0] + (b[0] - a[0]) * u, z: a[1] + (b[1] - a[1]) * u };
+        }
+        acc += L;
+      }
+      return { x: PROM[0][0], z: PROM[0][1] };
+    };
+    const TOTAL = 278;
+    // benches on the lake side facing the water, lamp posts on the landward side
+    for (let t = 12; t < TOTAL; t += 24) {
+      const p = promAt(t), y = groundY(p.x - 5.4, p.z);
+      put('bench', p.x - 5.4, y, p.z, Math.PI / 2);          // back to the path, facing the lake
+      collide.addSurface({ x: p.x - 5.4, z: p.z, w: 1.8, d: 0.62, yaw: Math.PI / 2, top: y + 0.48, bottom: y, kind: 'bench', name: 'Waterfront bench', grindable: true });
+      nWfBench++;
+      if ((nWfBench % 2) === 0) {
+        const lx = p.x + 3.4, lz = p.z, ly = groundY(lx, lz);
+        put('lamp', lx, ly, lz, -Math.PI / 2);
+        blocker(lx, lz, 0.11, ly + 4.6, 'Lamp post');
+        emis.push(disc(0.15, 7, 0xffe9c0, lx - 0.72, ly + LAMP_H + 0.18, lz));
+        glows.push({ x: lx - 0.72, y: ly + LAMP_H + 0.2, z: lz, c: 0xffd79a });
+        nWfLamp++;
+      }
+    }
+    // a loose double row of park trees between the promenade and the Lake Street kerb.
+    // Held west of x = −655 so nothing lands in the Pease or ferry-terminal parking lots.
+    for (let t = 6; t < TOTAL; t += mobile ? 21 : 13) {
+      const p = promAt(t);
+      for (const off of [9.5, 21]) {
+        const x = p.x + off + rr(-3.2, 3.2), z = p.z + rr(-5, 5);
+        if (x > -656 || x < -704 || z > 24 || z < -246) continue;
+        if (inBuilding(x, z, 1.5) || onRoad(x, z, 2.0) || !farEnough(x, z, 8)) continue;
+        addTree(x, z, groundY(x, z), { h: rr(4.4, 6.6), w: rr(4.8, 7.0), blobs: mobile ? 2 : 3 });
+        claim(x, z); nWfTree++;
+      }
+    }
+    // a bike rack pair at the head of the promenade, by the boathouse gangway
+    for (let k = 0; k < 3; k++) {
+      const x = -678, z = 18 + k * 1.4, y = groundY(x, z);
+      put('hoop', x, y, z, 0, 1, 1, 1, IRON);
+      blocker(x, z, 0.1, y + 0.8, 'Bike rack');
+    }
+  }
+
   // the Marketplace maintenance golf cart, parked in front of City Hall
   {
     const p = pos(sOf(0, 92), -6.0), y = groundY(p.x, p.z), yaw = yawAlong(p.tx, p.tz);
@@ -1188,6 +1246,7 @@ export function buildProps(ctx) {
     `${nLamp} lamps (${nBanner} banners, ${nFlag} flags) · ${nBunt} bunting runs · ${nBollard} bollards + ${nGpost} granite posts · ` +
     `${nPylon} pylons · ${nPlanter} planters + ${nBowl} bowls · ${nCart} carts · ${nBoard} boards · ${nTent} tents · ${nTrash} trash · ` +
     `${nRack} racks · ${nSL} street lights · ${nSig} signals · ${nShelter}+${nSign} bus stops · ${nMon} monuments · ${nHyd} hydrants · ` +
-    `${nMeter} meters · ${nVend} vending · ${nBistro} bistro sets · ${nPBench} park benches · ${lights.length + glows.length} light points · ` +
+    `${nMeter} meters · ${nVend} vending · ${nBistro} bistro sets · ${nPBench} park benches · ` +
+    `waterfront ${nWfTree} trees/${nWfBench} benches/${nWfLamp} lamps · ${lights.length + glows.length} light points · ` +
     `${calls} draw groups · ~${Math.round(tris / 1000)}k tris`);
 }
