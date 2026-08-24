@@ -220,7 +220,22 @@ export function createTraffic(ctx) {
       const deck = y + T.by + T.bh / 2, roof = y + T.cy + T.ch / 2;
       const cs = Math.sin(sl.yaw), cc = Math.cos(sl.yaw);   // local (0, cz) → world, same as part()
       collide.addSurface({ x: sl.x, z: sl.z, w: T.bw, d: T.bl, yaw: sl.yaw, top: deck, bottom: y, kind: 'car', name: 'Parked car', grindable: false });
-      collide.addSurface({ x: sl.x + T.cz * cs, z: sl.z + T.cz * cc, w: T.cw, d: T.cl, yaw: sl.yaw, top: roof, bottom: deck, kind: 'car', name: 'Parked car', grindable: false });
+      // The roof's long edges are grindable rails — land on the side of the roof and snap on.
+      collide.addSurface({ x: sl.x + T.cz * cs, z: sl.z + T.cz * cc, w: T.cw, d: T.cl, yaw: sl.yaw, top: roof, bottom: deck, kind: 'car', name: 'Car roof', grindable: true, edgeKind: 'rail' });
+      // Ride-up ramps: bumpers → deck, and windshield/rear glass → roof. A parked car is a
+      // fun-box you can hit at speed from either end, not a wall that eats your run.
+      const P2 = (lz) => [sl.x + lz * cs, sl.z + lz * cc];  // point at local z along the car
+      const hb = T.bl / 2, cz0 = T.cz - T.cl / 2, cz1 = T.cz + T.cl / 2;
+      for (const s2 of [-1, 1]) {
+        const [ax2, az2] = P2(s2 * (hb + 0.7)), [bx2, bz2] = P2(s2 * (hb - 0.35));
+        collide.addRamp({ ax: ax2, az: az2, bx: bx2, bz: bz2, w: T.bw, yLow: y, yHigh: deck, kind: 'ramp', name: 'Parked car' });
+      }
+      { // windshield (deck → roof) and the rear glass, whichever way the cabin sits
+        const [ax2, az2] = P2(cz0 - 0.45), [bx2, bz2] = P2(cz0 + 0.1);
+        collide.addRamp({ ax: ax2, az: az2, bx: bx2, bz: bz2, w: T.cw, yLow: deck, yHigh: roof, kind: 'ramp', name: 'Parked car' });
+        const [ax3, az3] = P2(cz1 + 0.45), [bx3, bz3] = P2(cz1 - 0.1);
+        collide.addRamp({ ax: ax3, az: az3, bx: bx3, bz: bz3, w: T.cw, yLow: deck, yHigh: roof, kind: 'ramp', name: 'Parked car' });
+      }
     }
     for (let i = take; i < nPark; i++) { part(bodyM, i, 0, -400, 0, 0.001, 0.001, 0.001); part(cabinM, i, 0, -400, 0, 0.001, 0.001, 0.001); for (let k = 0; k < 4; k++) { part(wheelM, i * 4 + k, 0, -400, 0, 0.001, 0.001, 0.001); part(lightM, i * 4 + k, 0, -400, 0, 0.001, 0.001, 0.001); } }
   }

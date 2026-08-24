@@ -7,8 +7,8 @@ export const CFG = {
   rollFriction: 0.18,      // m/s^2 deceleration
   airDrag: 0.02,
   brakeDecel: 7,
-  reverseAccel: 3.6,       // m/s^2 pushing fakie (hold brake past a stop)
-  maxReverseSpeed: 7,
+  reverseAccel: 4.4,       // m/s^2 creeping off fakie (hold brake past a stop)
+  maxReverseSpeed: 9,      // the S-creep cap only — W pushes switch at the full flow ceiling
   gravity: 17,             // a bit heavier than earth for snappy feel
   turnRate: 2.6,           // rad/s at low speed
   turnRateHighSpeed: 1.5,
@@ -17,9 +17,13 @@ export const CFG = {
   // deliberately super-human (Stephen wants big air): a full charge clears a parked car in
   // one hop and puts second-storey sign bands in reach.
   ollieMin: 5.2, ollieMax: 11.5, ollieCharge: 0.45,
-  spinRate: 5.2,           // rad/s in air at full stick
+  spinRate: 6.0,           // rad/s in air at full stick
+  spinResponse: 14,        // how fast yawVel chases the stick in air (was 10 — spins start sooner)
   flipTime: 0.42,
   landTolerance: 0.68,     // rad (≈39°) between board yaw and velocity on landing
+  landToleranceBigAir: 0.6, // extra tolerance fraction earned by long airs (up to ≈62° total)
+  landAssistRate: 9,       // rad/s auto-align to the travel axis just before touchdown
+  landAssistHeight: 1.4,   // m above the ground where the assist kicks in
   grindSnapDist: 0.6, grindSnapAbove: 0.55, grindSnapBelow: 0.25,
   grindFriction: 0.35,
   balanceDrift: 0.9, balanceCorrect: 3.2, balanceLimit: 1,
@@ -29,5 +33,9 @@ export const CFG = {
   // camera
   camDist: 5.2, camHeight: 2.1, camLookAhead: 2.4, camFov: 62,
   // scoring
-  score: { ollie: 10, kickflip: 100, heelflip: 100, shoveit: 80, fsshoveit: 90, treflip: 300, varial: 220, spin180: 60, spin360: 180, spin540: 420, spin720: 800, grindPerSec: 90, grindBase: 80, manualBase: 60, manualPerSec: 70, bigAir: 50 },
+  score: { ollie: 10, kickflip: 100, heelflip: 100, shoveit: 80, fsshoveit: 90, treflip: 300, varial: 220,
+    hardflip: 260, varialkick: 220, inward: 260, laser: 340,
+    spin180: 80, spin360: 260, spin540: 600, spin720: 1100,
+    grindPerSec: 90, grindBase: 80, manualBase: 60, manualPerSec: 70, bigAir: 50, revert: 60, maple: 1200 },
+  runSeconds: 120,         // 2-MINUTE RUN mode
 };

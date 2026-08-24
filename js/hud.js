@@ -1,23 +1,35 @@
 // DOM HUD: score, combo ticker, trick popups, spot callouts, balance meter, location label, minimap.
 import { clamp } from './util.js';
+import { CFG } from './config.js';
 
 export class Hud {
   constructor(root, worldInfo) {
     this.root = root; this.info = worldInfo; // { roads, buildings, play, churchStreet } for minimap + location names
     root.innerHTML = `
       <div id="hud-top">
-        <div id="hud-score"><div class="lbl">SCORE</div><div id="score-val">0</div><div id="best-val">best 0</div></div>
+        <div id="hud-score"><div class="lbl">SCORE</div><div id="score-val">0</div><div id="best-val">best 0</div>
+          <div id="meters">
+            <div class="meter" id="m-special"><i></i></div>
+            <div class="meter" id="m-flow"><i></i></div>
+          </div>
+          <div id="letters"></div>
+        </div>
         <div id="hud-loc"><span id="loc-name">Church Street</span></div>
+        <div id="timer"></div>
         <div id="hud-right"><button id="btn-map" class="pill" aria-label="Map">MAP</button><button id="btn-pause" class="pill" aria-label="Pause">II</button></div>
       </div>
       <div id="combo"><div id="combo-tricks"></div><div id="combo-total"></div></div>
       <div id="balance"><div id="balance-knob"></div></div>
+      <div id="charge"><i></i><b></b></div>
       <div id="popups"></div>
       <div id="callout"></div>
       <canvas id="minimap" width="220" height="220"></canvas>
       <div id="speed"></div>`;
-    this.el = { score: root.querySelector('#score-val'), best: root.querySelector('#best-val'), loc: root.querySelector('#loc-name'), combo: root.querySelector('#combo'), comboTricks: root.querySelector('#combo-tricks'), comboTotal: root.querySelector('#combo-total'), balance: root.querySelector('#balance'), knob: root.querySelector('#balance-knob'), popups: root.querySelector('#popups'), callout: root.querySelector('#callout'), map: root.querySelector('#minimap'), speed: root.querySelector('#speed'), btnMap: root.querySelector('#btn-map'), btnPause: root.querySelector('#btn-pause') };
+    this.el = { score: root.querySelector('#score-val'), best: root.querySelector('#best-val'), loc: root.querySelector('#loc-name'), combo: root.querySelector('#combo'), comboTricks: root.querySelector('#combo-tricks'), comboTotal: root.querySelector('#combo-total'), balance: root.querySelector('#balance'), knob: root.querySelector('#balance-knob'), popups: root.querySelector('#popups'), callout: root.querySelector('#callout'), map: root.querySelector('#minimap'), speed: root.querySelector('#speed'), btnMap: root.querySelector('#btn-map'), btnPause: root.querySelector('#btn-pause'),
+      special: root.querySelector('#m-special > i'), flow: root.querySelector('#m-flow > i'), mSpecial: root.querySelector('#m-special'), letters: root.querySelector('#letters'), timer: root.querySelector('#timer'),
+      charge: root.querySelector('#charge'), chargeFill: root.querySelector('#charge > i'), chargeBonus: root.querySelector('#charge > b') };
     this.shownScore = 0; this.mapOn = true; this.comboFlash = 0; this._lastLoc = ''; this._locT = 0; this._calloutT = 0;
+    this._special = -1; this._flow = -1; this._lettersKey = ''; this._timerTxt = '';
     this.combo = [];                      // reused scratch for the combo ticker (no per-frame alloc)
     this._best = -1; this._mph = -1; this._comboHtml = ''; this._comboTotalTxt = '';
     this.mapCtx = this.el.map.getContext('2d');
@@ -40,7 +52,25 @@ export class Hud {
       case 'bail': if (ev.lost > 0) this.popup(`BAIL  −${ev.lost.toLocaleString()}`, 'bail', 50, 34); else this.popup('BAIL', 'bail', 50, 34); break;
       case 'spotFirst': this.callout(`NEW SPOT: ${ev.name}`, `+${ev.bonus} · ${sk.spotsHit.size}/${sk.spots.length} Burlington spots`); break;
       case 'land': if (ev.sketchy) this.popup('sketchy', 'sk', 50, 44); break;
+      case 'gap': this.callout(ev.name.toUpperCase(), ev.first ? `NEW GAP · +${ev.pts}` : `+${ev.pts}`); break;
+      // Wrecks are a separate flavour stat, so the toast is explicit that it scores nothing.
+      case 'wreck': this.popup(`${ev.name.toUpperCase()}! +0 · wreck score ${ev.score.toLocaleString()}`, 'wreck', 50, 40); break;
+      case 'revert': this.popup('revert', 'sk', 50, 46); break;
+      case 'maple': this.callout('THE MAPLE LEAF', 'signature trick'); break;
+      case 'letter': this.callout(`${ev.ch}`, `B-T-O-W-N · ${ev.n}/${ev.total}`); break;
+      case 'letters': this.callout('BTOWN!', `all five letters · +${ev.pts.toLocaleString()}`); break;
+      case 'flowFull': this.popup('FLOW', 'flow', 50, 50); break;
     }
+  }
+
+  // 2-MINUTE RUN clock. main.js owns the timer; the HUD only renders what it is handed.
+  setTimer(sec) {
+    if (sec == null) { if (this._timerTxt !== '') { this._timerTxt = ''; this.el.timer.textContent = ''; this.el.timer.classList.remove('on', 'low'); } return; }
+    const s = Math.max(0, Math.ceil(sec));
+    const txt = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+    if (txt !== this._timerTxt) { this._timerTxt = txt; this.el.timer.textContent = txt; }
+    this.el.timer.classList.add('on');
+    this.el.timer.classList.toggle('low', sec <= 10);
   }
 
   update(dt, sk, loc) {
@@ -54,6 +84,11 @@ export class Hud {
     let liveName = null, livePts = 0;
     if (sk.state === 'grind' && sk.grind) { liveName = sk.grind.type + (sk.grind.edge.name ? ' · ' + sk.grind.edge.name : ''); livePts = 80 + 90 * sk.grind.time; }
     else if (sk.state === 'manual' && sk.manual) { liveName = sk.manual.nose ? 'Nose Manual' : 'Manual'; livePts = 60 + 70 * sk.manual.time; }
+    else if (sk.state === 'air' && Math.abs(sk.spinAccum) > 1.9) {
+      // live spin readout: you can watch the rotation build toward the next 180
+      const deg = Math.floor(Math.abs(sk.spinAccum) / Math.PI * 180 / 10) * 10;
+      liveName = (sk.spinAccum > 0 ? 'FS ' : 'BS ') + deg + '°'; livePts = 0;
+    }
     if (nReal || liveName) {
       this.combo.length = 0;
       for (const t of sk.combo) if (!t.silent) this.combo.push(t.name);
@@ -74,6 +109,29 @@ export class Hud {
     // location
     if (loc && loc !== this._lastLoc) { this._lastLoc = loc; this.el.loc.textContent = loc; this.el.loc.parentElement.classList.add('flash'); setTimeout(() => this.el.loc.parentElement.classList.remove('flash'), 600); }
     if (this._calloutT > 0) { this._calloutT -= dt; if (this._calloutT <= 0) this.el.callout.classList.remove('on'); }
+    // special + flow meters (written only when they actually move, like every other field)
+    const sp2 = Math.round(sk.special * 100), fl = Math.round(sk.flow * 100);
+    if (this._special !== sp2) { this._special = sp2; this.el.special.style.width = sp2 + '%'; this.el.mSpecial.classList.toggle('full', sk.special >= 1); }
+    if (this._flow !== fl) { this._flow = fl; this.el.flow.style.width = fl + '%'; }
+    // B-T-O-W-N tray
+    if (this.letters) {
+      const key = [...this.letters.got].sort().join('');
+      if (key !== this._lettersKey) {
+        this._lettersKey = key;
+        this.el.letters.innerHTML = this.letters.all.map(c => `<b class="${this.letters.got.has(c) ? 'got' : ''}">${c}</b>`).join('');
+      }
+    }
+    // OLLIE CHARGE bar: yellow = how loaded the pop is, green = the extra the current
+    // speed adds on top (grows as you gather speed mid-charge — tuck downhill and watch it)
+    if (sk.charging) {
+      this.el.charge.classList.add('on');
+      const frac = clamp(sk.charge / CFG.ollieCharge, 0, 1);
+      const bonus = frac * 0.30 * clamp(sk.speed / 28, 0, 1);
+      const fillPct = frac / 1.30 * 100;
+      this.el.chargeFill.style.width = fillPct.toFixed(1) + '%';
+      this.el.chargeBonus.style.left = fillPct.toFixed(1) + '%';
+      this.el.chargeBonus.style.width = (bonus / 1.30 * 100).toFixed(1) + '%';
+    } else this.el.charge.classList.remove('on');
     const mph = Math.round(sk.speed * 2.237);
     if (this._mph !== mph) { this._mph = mph; this.el.speed.textContent = mph + ' mph'; }
     if (this.mapOn) this.drawMap(sk);

@@ -129,11 +129,35 @@ export function installDev(api) {
     camera.lookAt(tx, ty, tz); render();
   };
   window.__ground = (x, z, yHint = 200) => { const g = world.collide.groundAt(x, z, yHint, 300); return { y: +g.y.toFixed(3), kind: g.kind, name: g.obj && g.obj.name, slope: +(1 - g.ny).toFixed(3) }; };
+
+  // ---- feature-wave-2 hooks (scripts/feature-checks.mjs) --------------------
+  // Meters: read and force. Forcing lets a test isolate "what does full flow do" from
+  // "can I earn full flow", which are different questions.
+  window.__flow = () => skater.flow;
+  window.__setFlow = (v) => { skater.flow = v; skater._flowFull = v >= 0.95; return skater.flow; };
+  window.__special = () => skater.special;
+  window.__maxPush = () => skater.maxPush;
+  window.__flip = () => skater.flip && { kind: skater.flip.kind, t: +skater.flip.t.toFixed(3), dur: +skater.flip.dur.toFixed(3) };
+  window.__setSpecial = (v) => { skater.special = v; return skater.special; };
+  // Current grind, including whether it latched as a lip trick (stall) rather than a grind.
+  window.__grind = () => { const g = skater.grind; return g ? { type: g.type, stall: !!g.stall, speed: +g.speed.toFixed(2), perp: !!g.perp, edge: g.edge.name, kind: g.edge.kind, time: +g.time.toFixed(2) } : null; };
+  window.__gaps = () => ({ list: api.gaps ? api.gaps.list : [], found: api.gaps ? [...api.gaps.found] : [], total: api.gaps ? api.gaps.total : 0 });
+  window.__lettersReset = () => { const st = world.letters; if (!st) return null; st.got.clear(); try { localStorage.removeItem(st.key); } catch {} for (const i of st.items) i.mesh.visible = true; return st.total; };
+  window.__letters = () => {
+    const st = world.letters;
+    return st ? { route: st.route, routeIdx: st.routeIdx, total: st.total, all: st.all, got: [...st.got], items: st.items.map(i => ({ ch: i.ch, x: i.x, y: i.y, z: i.z })) } : null;
+  };
+  // Event recorder: mirrors every skater event into window.__rec so a test can assert on
+  // 'gap' / 'wreck' / 'revert' / 'maple' without polling state and hoping to catch it.
+  window.__recOn = () => { window.__rec = []; api.setTap((ev) => { window.__rec.push(Object.assign({}, ev)); }); };
+  window.__recOff = () => { api.setTap(null); window.__rec = []; };
+  window.__rec = [];
   window.__dbg = () => ({
     state: skater.state, pos: [+skater.pos.x.toFixed(2), +skater.pos.y.toFixed(2), +skater.pos.z.toFixed(2)],
     vel: [+skater.vel.x.toFixed(2), +skater.vel.y.toFixed(2), +skater.vel.z.toFixed(2)], yaw: +skater.yaw.toFixed(2),
     score: skater.score, combo: skater.combo.map(t => t.name), loc: api.getLoc(), ground: skater.groundKind,
     why: skater.bail ? skater.bail.why : null,
+    flow: +skater.flow.toFixed(3), special: +skater.special.toFixed(3), bestWreck: skater.session.bestWreck,
     drawCalls: renderer.info.render.calls, tris: renderer.info.render.triangles,
   });
 }

@@ -89,11 +89,54 @@ export class SkaterMesh {
     this.spinePitch = 0; this.spineYaw = -1.15; this.spineRoll = 0; this.headYaw = 0.5; this.headPitch = 0;
     this.landT = 0; this.wobbleT = 0; this.snapT = 0; this.prev = 'ride'; this.idle = 0; this.brake = 0; this.bailLay = 0;
     this.pedal = 0; this.fakie = 0;
+    this.revertT = 0; this._revertSeq = 0;      // quick hip twitch when skate.js scores a Revert
+    this._buildLeaves(scene);
 
     this.shadowBlob = new THREE.Mesh(new THREE.CircleGeometry(0.46, 14), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.28, depthWrite: false }));
     this.shadowBlob.rotation.x = -Math.PI / 2; this.shadowBlob.renderOrder = -1; scene.add(this.shadowBlob);
     this._dbg = typeof location !== 'undefined' && location.search.indexOf('test') >= 0;
     if (this._dbg) window.__skaterMesh = this; // model inspection hook
+  }
+
+  // --------------------------------------------------------- leaf particles ----
+  // One-shot Vermont-foliage burst for The Maple Leaf. 36 points in a single Points
+  // object, hidden (and therefore costing no draw call) whenever it isn't running.
+  _buildLeaves(scene) {
+    const N = this.leafN = 36;
+    const pos = new Float32Array(N * 3), col = new Float32Array(N * 3);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    this.leaves = new THREE.Points(g, new THREE.PointsMaterial({ size: 0.22, vertexColors: true, transparent: true, opacity: 0.95, depthWrite: false, sizeAttenuation: true }));
+    this.leaves.name = 'maple-leaves'; this.leaves.visible = false; this.leaves.frustumCulled = false;
+    scene.add(this.leaves);
+    this.leafV = new Float32Array(N * 3); this.leafT = 0;
+  }
+  leafBurst(at) {
+    const N = this.leafN, p = this.leaves.geometry.attributes.position.array, c = this.leaves.geometry.attributes.color.array, v = this.leafV;
+    for (let i = 0; i < N; i++) {
+      p[i * 3] = at.x + (Math.random() - 0.5) * 0.3; p[i * 3 + 1] = at.y + 0.6 + Math.random() * 0.3; p[i * 3 + 2] = at.z + (Math.random() - 0.5) * 0.3;
+      const a = Math.random() * TAU, s = 1.6 + Math.random() * 2.6;
+      v[i * 3] = Math.cos(a) * s; v[i * 3 + 1] = 1.4 + Math.random() * 2.8; v[i * 3 + 2] = Math.sin(a) * s;
+      const t = Math.random();                                  // red → orange → gold
+      c[i * 3] = 0.85 + t * 0.15; c[i * 3 + 1] = 0.18 + t * 0.6; c[i * 3 + 2] = 0.1 + t * 0.12;
+    }
+    this.leaves.geometry.attributes.position.needsUpdate = true;
+    this.leaves.geometry.attributes.color.needsUpdate = true;
+    this.leafT = 1.6; this.leaves.visible = true;
+  }
+  _stepLeaves(dt) {
+    if (this.leafT <= 0) return;
+    this.leafT -= dt;
+    if (this.leafT <= 0) { this.leaves.visible = false; return; }
+    const N = this.leafN, p = this.leaves.geometry.attributes.position.array, v = this.leafV;
+    for (let i = 0; i < N; i++) {
+      v[i * 3 + 1] -= 5.5 * dt;                                  // leaves fall slowly, not like rocks
+      v[i * 3] *= 1 - 1.6 * dt; v[i * 3 + 2] *= 1 - 1.6 * dt;
+      p[i * 3] += v[i * 3] * dt; p[i * 3 + 1] += v[i * 3 + 1] * dt; p[i * 3 + 2] += v[i * 3 + 2] * dt;
+    }
+    this.leaves.geometry.attributes.position.needsUpdate = true;
+    this.leaves.material.opacity = clamp(this.leafT / 0.6, 0, 1) * 0.95;
   }
 
   // ---------------------------------------------------------------- build ----
@@ -209,6 +252,9 @@ export class SkaterMesh {
     this.landT = Math.max(0, this.landT - dt);
     this.wobbleT = Math.max(0, this.wobbleT - dt);
     this.snapT = Math.max(0, this.snapT - dt);
+    if (sk.revertSeq !== this._revertSeq) { this._revertSeq = sk.revertSeq; this.revertT = 0.28; }
+    this.revertT = Math.max(0, this.revertT - dt);
+    this._stepLeaves(dt);
 
     const air = st === 'air', grind = st === 'grind', manual = st === 'manual', bail = st === 'bail', ride = st === 'ride';
     // bail tumble phase: 0 = upright, 1 = face down on the ground (eases back to 0 to get up)
@@ -263,14 +309,15 @@ export class SkaterMesh {
       pitch = (sk.manual && sk.manual.nose ? -1 : 1) * 0.44 + bal * 0.09;
     } else if (grind && sk.grind) {
       const ty = sk.grind.type;
-      pitch = ty.indexOf('5-0') >= 0 ? 0.32 : ty.indexOf('Nosegrind') >= 0 ? -0.32 : 0;
+      pitch = ty.indexOf('5-0') >= 0 ? 0.32 : ty.indexOf('Nosegrind') >= 0 ? -0.32 : (ty.indexOf('Smith') >= 0 || ty.indexOf('Feeble') >= 0) ? 0.24 : 0;
     }
     if (!air) boardY += 0.205 * Math.abs(Math.sin(pitch));
     if (sk.flip) {
       const f = sk.flip, e = clamp(f.t / f.dur, 0, 1);
       flipAmt = Math.sin(e * Math.PI);
-      roll = -f.flipDir * TAU * e;
-      const turns = f.kind === 'treflip' ? TAU : (f.kind === 'shoveit' || f.kind === 'varial') ? Math.PI : 0;
+      // The Maple Leaf is a 900: two full board rolls under two and a half shove turns.
+      roll = -f.flipDir * TAU * e * (f.kind === 'maple' ? 2 : 1);
+      const turns = f.kind === 'maple' ? TAU * 2.5 : f.kind === 'treflip' ? TAU : (f.kind === 'shoveit' || f.kind === 'varial') ? Math.PI : 0;
       byaw = f.shoveDir * turns * e;
     }
     this.bPitch = damp(this.bPitch, pitch, 17, dt);
@@ -343,6 +390,8 @@ export class SkaterMesh {
     if (grabName === 'Indy') { sRoll += 0.34 * grab; sYaw += 0.20 * grab; }
     else if (grabName === 'Melon') { sRoll -= 0.30 * grab; sYaw -= 0.16 * grab; }
     else if (grabName === 'Nosegrab') { sPitch += 0.34 * grab; sYaw -= 0.40 * grab; }
+    else if (grabName === 'Tailgrab') { sPitch -= 0.22 * grab; sYaw += 0.30 * grab; }
+    else if (grabName === 'Method') { sRoll -= 0.42 * grab; sPitch += 0.12 * grab; sYaw -= 0.20 * grab; }
     if (bail) { sPitch = -0.35; sRoll = 0; sYaw = -1.3; }
     this.spinePitch = damp(this.spinePitch, sPitch, 12, dt);
     this.spineYaw = damp(this.spineYaw, sYaw, 10, dt);
@@ -350,6 +399,9 @@ export class SkaterMesh {
     this.spine.position.set(px, py, pz);
     // rotation.x > 0 tips an upright torso backwards, so authored "lean forward" is negated
     this.spine.rotation.set(-this.spinePitch, this.spineYaw, this.spineRoll, 'YXZ');
+    // Revert: a quick hip snap out of the transition. Applied after the damp so it reads as
+    // a twitch instead of being smoothed away, and it eases in and out to nothing.
+    if (this.revertT > 0) this.spine.rotation.y += Math.sin((this.revertT / 0.28) * Math.PI) * 0.7;
 
     // head: looks over the front shoulder, glances around when idle
     let hYaw = 0.52 + lean * 0.16 - this.pedal * 0.34, hPitch = 0.05 + crouch * 0.14;
@@ -403,7 +455,8 @@ export class SkaterMesh {
     if (grab > 0.01 && grabName) {
       const dy = this.bY + 0.11;
       if (grabName === 'Indy') { rhx = lerp(rhx, 0.15, grab); rhy = lerp(rhy, dy, grab); rhz = lerp(rhz, 0.03, grab); }
-      else if (grabName === 'Melon') { lhx = lerp(lhx, -0.15, grab); lhy = lerp(lhy, dy, grab); lhz = lerp(lhz, -0.06, grab); }
+      else if (grabName === 'Melon' || grabName === 'Method') { lhx = lerp(lhx, -0.15, grab); lhy = lerp(lhy, dy, grab); lhz = lerp(lhz, -0.06, grab); }
+      else if (grabName === 'Tailgrab') { rhx = lerp(rhx, 0.02, grab); rhy = lerp(rhy, dy, grab); rhz = lerp(rhz, 0.30, grab); }
       else { lhx = lerp(lhx, -0.02, grab); lhy = lerp(lhy, dy + 0.05, grab); lhz = lerp(lhz, -0.34, grab); }
     }
     const hRate = grab > 0.01 ? 24 : 16;

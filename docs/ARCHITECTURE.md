@@ -40,7 +40,10 @@ playable frame rate on a mid-range phone.
 | `js/traffic.js` | builder D | cars/buses on car streets (not on the pedestrian mall), follow `WORLD.roads` polylines, one-way aware, yield, hit = bail |
 | `js/world.js` | lead | thin orchestrator: builds terrain → ground → city → props → npcs → traffic; exposes `world.update(dt, skaterPos)` |
 | `js/env.js` | builder A | time-of-day lighting preset (golden hour), drifting leaves / snow particle option, distance fog, lamp glow at dusk |
-| `js/challenges.js` | lead | eight Burlington challenges, ticked off from `skater.events` + a per-frame tracker, persisted in `localStorage` |
+| `js/gaps.js` | lead | the named-gap table + `GapTracker`. Pure (no DOM, no three.js): main.js feeds it the skater's `land` events, which carry the takeoff point; it scores hits through the normal combo path and persists found gaps |
+| `js/letters.js` | builder E2 | the five B-T-O-W-N collectables on one of four routes, chosen by ISO-week seed. Builds a small mesh group + a `ctx.updaters` entry that rotates them and emits `letter`/`letters` onto the skater |
+| `js/leaderboard.js` | lead | the Btown fleet's **canonical** monthly-leaderboard client, copied byte-identical from `maple-scramble` with only the `GAME` slug changed. Do not edit it — fix it in the fleet and re-copy |
+| `js/challenges.js` | lead | thirteen Burlington challenges, ticked off from `skater.events` + a per-frame tracker, persisted in `localStorage` |
 | `js/devhooks.js` | lead | the `window.__*` headless-playtest hooks (`__sim` / `__tp` / `__drive` / `__air` / `__near` / `__pick` / `__ground` / `__meshes` / `__look` / `__topdown` / `__dbg`). Kept out of `main.js`; nothing runs unless a test calls it |
 
 Builders must not touch files they don't own. Shared constants in `js/config.js`.
@@ -59,6 +62,16 @@ Builders must not touch files they don't own. Shared constants in `js/config.js`
   matrix, i.e. a 1 m cube at the world origin — which here is Church & College. `npcs.js`
   and `traffic.js` park every slot off-world at build time; `props.js` sizes its meshes to
   the instances it actually placed.
+- **Ramp and surface footprints must touch, never merely come close.** The Bluff Bomber's
+  roll-in first shipped ending 0.5 m short of its own deck, and that crack launched riders
+  off the deck *over* the whole transition to land at 5 m/s — the roll-in did nothing.
+  `rampHeight` returns null past `len`, so a gap of any size is a hole.
+- **A structure standing above the terrain the rider is on is invisible to them.**
+  `groundAt` rejects any support above `yHint + stepUp`, so a tall landing ramp built on a
+  hillside is a phantom riders pass straight through. Build landings *into* the slope.
+- **Check for roads before placing anything big.** Park Street crosses the Bluff Bomber's
+  axis, and a College St kicker at z −5 aimed riders into a building corner 4 m away. Both
+  only showed up by querying `WORLD.roads` and `__near` along the whole intended line.
 - **Parked cars carry two decks** (`traffic.js`): the hood/trunk sheet metal at ~0.9 m and
   the cabin roof above it, both `kind: 'car'`. A full-charge ollie peaks at 1.24 m, so the
   deck is the reachable one.
@@ -96,7 +109,17 @@ board flips (~0.42 s). Land: bail if flip unfinished, if |yaw − velocity dir| 
 38°, if speed into a wall is high, or if a car/pedestrian is hit. Grinds: while airborne and no longer rising
 (`vel.y < 0.25`), within 0.6 m of a grind edge horizontally and between 0.25 m below and
 0.55 m above it → snap and slide along the edge; balance drifts, steer to correct; ollie out or fall off at the end.
-Manual: hold back/forward after landing on flat (balance mechanic). Scoring: THPS style
+Manual: hold back/forward after landing on flat (balance mechanic).
+
+**Flow / special (feature wave 2).** `flow` (0–1) builds on landed tricks, banks, grinds
+and manuals, decays while idling and is cut to 35% on a bail; its only effect is the push
+ceiling, 16 → 24 m/s (the hard 28 m/s cap is unchanged). `special` (0–1) fills with points
+and zeroes on a bail; at full it multiplies trick value by 1.5 and unlocks **The Maple
+Leaf** (both flip buttons in the air). Pops scale with speed: `vy × (1 + 0.30·speed/28)`.
+Landing a transition with >0.35 s of air scores a **Revert** and extends the combo settle
+window to 0.9 s. A coping edge taken below 2.5 m/s along becomes a **stall** rather than a
+grind. Bails are separately scored as **wrecks** (speed + fall height + tumble) which never
+touch the score. Scoring: THPS style
 (trick base × combo multiplier, combo banked on clean landing, lost on bail) with named
 **spot bonuses** keyed to real Burlington features (e.g. "City Hall steps", "Leunig's
 corner", "Bank St planter", "Fountain gap").
@@ -113,8 +136,8 @@ corner", "Bank St planter", "Fountain gap").
   resample, no kerb top strip, half the lane paint, roof-edge detail only within 95 m of
   Church St, `SEG()` coarsens every round primitive in `props.js`, 46 parked cars instead
   of 86, and every flat-coloured landmark material merges into one vertex-coloured mesh.
-  Measured on an iPhone 13 landscape profile: **99 draw calls, ~276k triangles** (from 139
-  and 377k). Desktop: **120 draw calls, ~474k triangles**.
+  Measured on an iPhone 13 landscape profile: **105 draw calls, ~281k triangles** (from 139
+  and 377k). Desktop: **125–128 draw calls, ~479k triangles**. (Feature wave 2 added ~3–4 calls: the B-T-O-W-N letters within 90 m. Measured against `main` in a worktree: 122/476k desktop, 101/281k mobile.)
 
 ## Headless playtesting
 
@@ -124,6 +147,9 @@ corner", "Bank St planter", "Fountain gap").
 node scripts/playtest.mjs [test ...]     # physics battery: mall, college, main, cityhall,
                                          # grinds, holes, car, hazards, edges, tricks,
                                          # spots, perf   (add `mobile` for the phone tier)
+node scripts/feature-checks.mjs [name…]  # PASS/FAIL battery for the wave-2 mechanics:
+                                         # flow, ollie, revert, stall, gaps, bluff, wreck,
+                                         # maple, run, letters. Exits non-zero on failure.
 node scripts/shot.mjs <prefix> [mobile]  # scripted keypresses + screenshots
 node scripts/shot-mobile.mjs <prefix> [portrait]   # touch-control + layout audit
 ```
