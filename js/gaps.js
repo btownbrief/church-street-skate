@@ -33,9 +33,13 @@ export const GAPS = [
   { name: 'Battery Vert Transfer', from: { x: -552, z: -424, r: 7 }, to: { x: -552, z: -396, r: 7 }, minAir: 0.8, pts: 700 },
   { name: 'Battery Halfpipe Channel', from: { x: -534, z: -446, r: 6 }, to: { x: -556, z: -446, r: 6 }, minAir: 0.8, pts: 700 },
   // ---- the mega sends (see the "mega" section of skatepark.js) ----
-  { name: 'Battery Street Fly-By', from: { x: -470, z: -5, r: 9 }, to: { x: -508, z: -5, r: 12 }, minAir: 0.8, pts: 800 },
-  // measured: takeoff x ≈ −559, touchdown x ≈ −594 after ~2.5 s and 35 m of flight
-  { name: 'Lake Leap', from: { x: -558, z: -375, r: 10 }, to: { x: -595, z: -374, r: 17 }, minAir: 1.2, pts: 1000 },
+  // measured off the super kicker: takeoff x ≈ −471, touchdown −507…−517 over 2.0–2.3 s,
+  // clearing the whole Battery St intersection (x ≈ −485…−503) at every entry speed
+  { name: 'Battery Street Fly-By', from: { x: -471, z: 10, r: 9 }, to: { x: -512, z: 10, r: 12 }, minAir: 1.2, pts: 800 },
+  // Measured: takeoff x ≈ −559 every time, but the touchdown moves a long way with entry
+  // speed — x ≈ −594 rolling in cold, x ≈ −613 in full flow, 2.5–3.1 s of air. The landing
+  // zone has to span the whole of that.
+  { name: 'Lake Leap', from: { x: -558, z: -375, r: 10 }, to: { x: -603, z: -375, r: 22 }, minAir: 1.2, pts: 1000 },
 ];
 
 const inZone = (z, x, zz) => (x - z.x) * (x - z.x) + (zz - z.z) * (zz - z.z) < z.r * z.r;

@@ -386,12 +386,17 @@ export function buildSkatepark(ctx) {
   //     Placement note: the OSM College Street centreline through here actually runs at
   //     z ≈ 20…28 and traffic.js puts cars 1.4–1.95 m either side of it, so a 6 m kicker
   //     in the roadway proper would be straddling both lanes. The line players really bomb
-  //     (and the one scripts/playtest.mjs drives) is the open corridor at z ≈ −5, which
-  //     carries no road polyline at all — verified clear of walls and blockers within 5 m,
-  //     ~25 m off the nearest car path. Battery St crosses at x ≈ −492…−496.
+  //     (and the one scripts/playtest.mjs drives) is the open corridor at z ≈ 10, which
+  //     carries no road polyline at all — ~25 m off the nearest car path. Battery St
+  //     crosses at x ≈ −485…−503.
+  //     z ≈ 10 specifically: the neighbouring lane at z ≈ −5 has a building corner at
+  //     x ≈ −476 (wall from z −10.6 to −0.7), and a kicker there fired every single rider
+  //     straight into it 4 m after takeoff. z = 10 is clear from x −440 to −504.
+  //     The face is ~42°, near the range-optimal 45°, because clearing the whole
+  //     intersection needs distance rather than height.
   {
-    kicker(-470, -5, Math.PI / 2, 6, 1.8, 3.6, 'College St super kicker');
-    spots.push({ name: 'College St super kicker', x: -470, z: -5, r: 14, bonus: 300 });
+    kicker(-470, 10, Math.PI / 2, 6, 1.9, 2.1, 'College St super kicker');
+    spots.push({ name: 'College St super kicker', x: -470, z: 10, r: 14, bonus: 300 });
   }
 
   // ===========================================================================
