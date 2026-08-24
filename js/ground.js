@@ -14,6 +14,12 @@ const WALK_KINDS = ['primary', 'secondary', 'tertiary', 'residential', 'unclassi
 const GREEN_KINDS = ['leisure:park', 'landuse:grass', 'landuse:cemetery', 'natural:wood', 'leisure:garden',
   'landuse:recreation_ground', 'leisure:common', 'leisure:playground', 'landuse:village_green',
   'landuse:religious', 'amenity:school', 'amenity:college', 'landuse:education', 'landuse:residential'];
+// landuse=residential is a *zoning* polygon: block-sized, and it contains the streets and the
+// houses as well as the lawns. Draping it as a lawn plate spread green over every road inside it.
+// The terrain's own land-cover raster already tints those cells green (paintCover), underneath
+// the asphalt where it can never bleed, so the plate was pure downside — colour spill plus tens
+// of thousands of triangles. Same for the campus/school polygons, which swallow their own drives.
+const NO_DRAPE = ['landuse:residential', 'amenity:college', 'amenity:school', 'landuse:education'];
 
 // land-cover codes baked into the terrain vertex colours
 const CV = { URBAN: 0, GREEN: 1, WATER: 2, DIRT: 3, PAVED: 4 };
@@ -40,6 +46,17 @@ function mallGrassCull(WORLD) {
 }
 
 const LAKE_Y = -33.5;              // Lake Champlain surface, local metres (29.6 m ASL vs origin 63.44)
+
+// Waterfront Park: the lawn between Lake Street and the harbour, College Street north.
+// OSM has no polygon for it — the extract stops at the water's edge and the park is tagged
+// only as the "Waterfront" neighbourhood — so the shape is authored here, traced along the
+// west kerb of the mapped Lake Street centreline out to the shore.
+const WATERFRONT_LAWN = [
+  [-706, 34], [-596, 31], [-578, 16], [-582, 2], [-624, -104], [-647, -168],
+  [-670, -228], [-678, -250], [-706, -254],
+];
+// the harbour promenade / Burlington Greenway through the park, north–south along the shore
+const PROMENADE = [[-685, 30], [-683, -30], [-684, -110], [-687, -180], [-688, -248]];
 
 // ---------------------------------------------------------------------------
 // tiny geometry accumulator: one flat array set per material, merged at the end
@@ -117,13 +134,21 @@ export function buildGround(ctx) {
   const LX1 = LX0 + nx * gs, LZ1 = LZ0 + nz * gs;
   const H = (i, j) => terrain.raw(clamp(i, 0, nx) * stride, clamp(j, 0, nz) * stride);
 
-  // height of the *rendered* surface — exactly what the terrain mesh interpolates,
-  // so draped ribbons never sink into it.
+  // Height of the *rendered* terrain surface at (x,z).
+  //
+  // This must be the TRIANGULATED height, not the bilinear one. buildTerrain splits every
+  // 5 m cell along the (i+1,j)–(i,j+1) diagonal; a bilinear sample of the same four corners
+  // differs from that plane by up to a quarter of the cell's twist, which on Burlington's
+  // hills is 10–30 cm — far more than the 3–7 cm a road, kerb or lawn plate is lifted by.
+  // That mismatch is what pushed raw terrain and lawn green up through the asphalt.
   function gridH(x, z) {
     const fx = clamp((x - LX0) / gs, 0, nx - 1e-6), fz = clamp((z - LZ0) / gs, 0, nz - 1e-6);
     const i = Math.floor(fx), j = Math.floor(fz), u = fx - i, v = fz - j;
     const h00 = H(i, j), h10 = H(i + 1, j), h01 = H(i, j + 1), h11 = H(i + 1, j + 1);
-    return (h00 * (1 - u) + h10 * u) * (1 - v) + (h01 * (1 - u) + h11 * u) * v;
+    // lower-left triangle (h00,h10,h01) vs upper-right triangle (h10,h11,h01)
+    return (u + v <= 1)
+      ? h00 + (h10 - h00) * u + (h01 - h00) * v
+      : h11 + (h01 - h11) * (1 - u) + (h10 - h11) * (1 - v);
   }
 
   // On mobile the mesh is half resolution, so resample the heightmap itself onto that
@@ -136,12 +161,7 @@ export function buildGround(ctx) {
     }
     terrain.h = out;
   }
-  function latticeH(x, z) {
-    const fx = clamp((x - LX0) / gs, 0, nx - 1e-6), fz = clamp((z - LZ0) / gs, 0, nz - 1e-6);
-    const i = Math.floor(fx), j = Math.floor(fz), u = fx - i, v = fz - j;
-    const h00 = H(i, j), h10 = H(i + 1, j), h01 = H(i, j + 1), h11 = H(i + 1, j + 1);
-    return (h00 * (1 - u) + h10 * u) * (1 - v) + (h01 * (1 - u) + h11 * u) * v;
-  }
+  function latticeH(x, z) { return gridH(x, z); }
 
   const cover = new Uint8Array((nx + 1) * (nz + 1));
   paintCover(cover, WORLD, nx, nz, gs, LX0, LZ0);
@@ -159,7 +179,9 @@ export function buildGround(ctx) {
   const near = (x, z, m) => x > box.minX - m && x < box.maxX + m && z > box.minZ - m && z < box.maxZ + m;
 
   const streets = buildStreets(ctx, B, gridH, near, rnd);
+  buildWaterfrontGround(ctx, B, gridH);
   buildAreas(ctx, B, gridH, near);
+  buildPaths(ctx, B, gridH, near, park);
   const churchPts = buildMall(ctx, B, gridH, near);
   if (park && plaza) buildPark(ctx, B, gridH, park, plaza);
   buildSteps(ctx, B, gridH, near);
@@ -178,12 +200,16 @@ export function buildGround(ctx) {
   const lam = (o) => new THREE.MeshLambertMaterial({ vertexColors: true, ...o });
   const off = (f) => ({ polygonOffset: true, polygonOffsetFactor: f, polygonOffsetUnits: f });
 
-  add(B.asphalt, lam(off(-1)), false, 'asphalt');
-  add(B.brick, lam({ map: brickTexture(), ...off(-1) }), false, 'brick');
-  add(B.dirt, lam(off(-1)), false, 'dirt');
+  // Depth-priority stack for the coplanar ground plates, nearest-wins first:
+  //   paint −5 · stone −3 · concrete −2 · asphalt/brick −1.6 · lawn/dirt −0.8 · terrain +1
+  // Ground cover must never out-depth the road it is drawn beside, and raw terrain must
+  // never out-depth anything laid on it.
+  add(B.asphalt, lam(off(-1.6)), false, 'asphalt');
+  add(B.brick, lam({ map: brickTexture(), ...off(-1.6) }), false, 'brick');
+  add(B.dirt, lam(off(-0.8)), false, 'dirt');
   // stone (curb faces, stair risers, wall + hedge sides, fence posts) and hedges are thin
   // plates seen from either side
-  add(B.green, lam({ side: THREE.DoubleSide, ...off(-1) }), false, 'green');
+  add(B.green, lam({ side: THREE.DoubleSide, ...off(-0.8) }), false, 'green');
   add(B.concrete, lam(off(-2)), false, 'concrete');
   add(B.stone, lam({ side: THREE.DoubleSide, ...off(-3) }), true, 'stone');
   add(B.paint, lam(off(-5)), false, 'paint');
@@ -219,14 +245,37 @@ function paintCover(cover, WORLD, nx, nz, gs, LX0, LZ0) {
       if (pointInPoly(x, z, pts) && !(skip && skip(x, z))) cover[j * (nx + 1) + i] = code;
     }
   };
+  // Commercial / retail / industrial land is yard, lot and hardstanding, not bare earth.
+  // Stamped into the terrain's own vertex colour rather than draped, so it can never bleed
+  // onto a road, and costs nothing: it just stops whole downtown blocks and the rail yard
+  // behind Lake Street reading as an unpaved tan void between the buildings.
+  for (const a of WORLD.areas || []) {
+    if (['landuse:commercial', 'landuse:retail', 'landuse:industrial', 'landuse:brownfield'].includes(a.kind)) stamp(a.pts, CV.PAVED);
+  }
   for (const a of WORLD.areas || []) {
     if (GREEN_KINDS.includes(a.kind)) stamp(a.pts, CV.GREEN, cull);
   }
+  stamp(WATERFRONT_LAWN, CV.GREEN);
   for (const a of WORLD.areas || []) {
     if (a.kind === 'amenity:parking') stamp(a.pts, CV.PAVED);
     else if (a.kind === 'landuse:construction') stamp(a.pts, CV.DIRT);
   }
   for (const a of WORLD.areas || []) if (a.kind === 'natural:water') stamp(a.pts, CV.WATER);
+
+  // The terrain grid carries a ~25 m margin outside the data bbox that no land-use polygon
+  // can reach, so the whole outer rim of the map — including the top of Battery Park's bluff,
+  // which the player looks straight along — rendered as bare tan. Extend the land cover
+  // outward from the first row/column that has one.
+  const M = Math.max(2, Math.round(26 / gs));
+  const at = (i, j) => cover[j * (nx + 1) + i];
+  for (let j = 0; j <= nz; j++) for (let i = 0; i < M; i++) {
+    cover[j * (nx + 1) + i] = at(M, j);
+    cover[j * (nx + 1) + nx - i] = at(nx - M, j);
+  }
+  for (let i = 0; i <= nx; i++) for (let j = 0; j < M; j++) {
+    cover[j * (nx + 1) + i] = at(i, M);
+    cover[(nz - j) * (nx + 1) + i] = at(i, nz - M);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -237,7 +286,9 @@ function buildTerrain(scene, cover, nx, nz, gs, LX0, LZ0, H, rnd, mobile) {
     [CV.URBAN]: C(0x8f8a80), [CV.GREEN]: C(0x6f8a4a), [CV.WATER]: C(0x51707f),
     [CV.DIRT]: C(0x7a6a55), [CV.PAVED]: C(0x6d6b67),
   };
-  const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+  // pushed one unit *away* from the eye so a coplanar road/lawn/brick plate always wins the
+  // depth test even where the two surfaces meet exactly
+  const mat = new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
   const CH = 3;
   for (let cj = 0; cj < CH; cj++) for (let ci = 0; ci < CH; ci++) {
     const i0 = Math.floor(ci * nx / CH), i1 = Math.floor((ci + 1) * nx / CH);
@@ -275,17 +326,27 @@ function buildTerrain(scene, cover, nx, nz, gs, LX0, LZ0, H, rnd, mobile) {
 
 // flat apron running out from the data edge so the world never visibly ends
 function buildSkirt(scene, nx, nz, gs, LX0, LZ0, H) {
-  const OUT = 1400;
+  const OUT = 1400, SHORE = 16;
   const t = new Tris();
-  const c = C(0x7d786f), cw = C(0x51707f);
-  const ptH = (i, j) => { const h = H(i, j); return h < -25 ? -34.6 : h; };
+  const c = C(0x7d786f), cw = C(0x51707f), shingle = C(0x6d6a63), bluff = C(0x5c6647);
+  const ptH = (i, j) => { const h = H(i, j); return h < -25 ? -34.8 : h; };
   const colFor = (h) => (h <= -34 ? cw : c);
+  // Where the apron falls to the lake it now does so over ~26 m and then runs flat, instead of
+  // sliding 1,400 m at 0.2%: the old ramp turned Burlington Harbour into a tan mudflat running
+  // out to the horizon. Beyond the shore band the flat apron sits just under the lake plane.
   const edge = (ai, aj, bi, bj, ox, oz) => {
     const ax = LX0 + ai * gs, az = LZ0 + aj * gs, bx = LX0 + bi * gs, bz = LZ0 + bj * gs;
     const ah = ptH(ai, aj), bh = ptH(bi, bj);
+    const wet = ah <= -34 || bh <= -34;
+    const L = Math.hypot(ox, oz) || 1, sx = ox / L * SHORE, sz = oz / L * SHORE;
     const A = [ax, H(ai, aj), az], Bp = [bx, H(bi, bj), bz];
+    const As = [ax + sx, ah, az + sz], Bs = [bx + sx, bh, bz + sz];
     const Ao = [ax + ox, ah, az + oz], Bo = [bx + ox, bh, bz + oz];
-    t.quad(A, Ao, Bo, Bp, colFor(ah));
+    // A short drop is beach shingle; the long drop off Battery Park's bluff is a wooded
+    // bank, and rendering that as sand made the north shore look like a desert cliff.
+    const drop = Math.max(H(ai, aj) - ah, H(bi, bj) - bh);
+    t.quad(A, As, Bs, Bp, wet ? (drop > 8 ? bluff : shingle) : c);
+    t.quad(As, Ao, Bo, Bs, colFor(ah));
   };
   for (let i = 0; i < nx; i++) { edge(i + 1, 0, i, 0, 0, -OUT); edge(i, nz, i + 1, nz, 0, OUT); }
   for (let j = 0; j < nz; j++) { edge(0, j, 0, j + 1, -OUT, 0); edge(0 + nx, j + 1, nx, j, OUT, 0); }
@@ -406,12 +467,20 @@ function buildStreets(ctx, B, gridH, near, rnd) {
       const ya = gridH(a[0], a[1]) + layer, yb = gridH(b[0], b[1]) + layer;
       const tone = 0.9 + 0.2 * (((hashStr(r.id + ':' + i) >>> 6) & 255) / 255);
       const col = [base[0] * tone, base[1] * tone, base[2] * tone];
-      // asphalt quad
-      B.asphalt.quad(
-        [a[0] + na[0] * hw, ya, a[1] + na[1] * hw],
-        [b[0] + nb[0] * hw, yb, b[1] + nb[1] * hw],
-        [b[0] - nb[0] * hw, yb, b[1] - nb[1] * hw],
-        [a[0] - na[0] * hw, ya, a[1] - na[1] * hw], col);
+      // Asphalt, draped across the width rather than spanned flat. One quad per segment is a
+      // plane through four corners up to 12 m apart; the terrain between them is piecewise-planar
+      // on a 5 m lattice and pushes straight through it on a crowned or side-sloping street.
+      // Splitting the width into ~2.5 m strips, each corner sampled on the terrain, keeps the
+      // asphalt on the ground for the cost of a few triangles.
+      const strips = (w < 6) ? 1 : (mobile ? 2 : 3);   // an alley is already narrower than a terrain cell
+      for (let k = 0; k < strips; k++) {
+        const f0 = hw - (2 * hw) * k / strips, f1 = hw - (2 * hw) * (k + 1) / strips;
+        const A = [a[0] + na[0] * f0, 0, a[1] + na[1] * f0]; A[1] = gridH(A[0], A[2]) + layer;
+        const Bp = [b[0] + nb[0] * f0, 0, b[1] + nb[1] * f0]; Bp[1] = gridH(Bp[0], Bp[2]) + layer;
+        const Cp = [b[0] + nb[0] * f1, 0, b[1] + nb[1] * f1]; Cp[1] = gridH(Cp[0], Cp[2]) + layer;
+        const Dp = [a[0] + na[0] * f1, 0, a[1] + na[1] * f1]; Dp[1] = gridH(Dp[0], Dp[2]) + layer;
+        B.asphalt.quad(A, Bp, Cp, Dp, col);
+      }
 
       // ---- paint
       const mx = (a[0] + b[0]) / 2, mz = (a[1] + b[1]) / 2, my = (ya + yb) / 2 + 0.004;
@@ -464,6 +533,9 @@ function buildStreets(ctx, B, gridH, near, rnd) {
   const zebra = C(0xdedbd0);
   for (const p of WORLD.props || []) {
     if (p.kind !== 'highway:crossing' || !near(p.x, p.z, 130)) continue;
+    // Cherry, Bank and College cross the Marketplace on the brick; the crossings there are
+    // read in granite banding and the tri-tone paving, never in painted zebra stripes.
+    if (nearMallCore(p.x, p.z)) continue;
     let best = null, bd = 9;
     for (const r of drawn) {
       if (r.kind === 'service') continue;
@@ -532,12 +604,19 @@ function drape(tris, pts, gridH, lift, colFn, maxEdge = 9, flatY = null, skip = 
   let faces;
   try { faces = THREE.ShapeUtils.triangulateShape(contour, []); } catch (e) { return; }
   const Y = (x, z) => (flatY != null ? flatY : gridH(x, z) + lift);
+  // A draped triangle only samples the terrain at its corners, so a long edge crossing a
+  // ridge or a hollow leaves the plate floating over (or sunk under) the ground between them.
+  // Split when the edge is long OR when its midpoint has drifted more than a plate thickness
+  // from the true surface, so flat ground stays cheap and broken ground gets the triangles.
+  const SAG = 0.05;
+  const sags = (a, b) => Math.abs(Y((a[0] + b[0]) / 2, (a[1] + b[1]) / 2) - (Y(a[0], a[1]) + Y(b[0], b[1])) / 2) > SAG;
   const emit = (a, b, c, depth) => {
     const ab = Math.hypot(a[0] - b[0], a[1] - b[1]);
     const bc = Math.hypot(b[0] - c[0], b[1] - c[1]);
     const ca = Math.hypot(c[0] - a[0], c[1] - a[1]);
     const m = Math.max(ab, bc, ca);
-    if (m > maxEdge && depth < 5 && flatY == null) {
+    const bent = depth < 6 && flatY == null && m > 1.6 && (sags(a, b) || sags(b, c) || sags(c, a));
+    if ((bent || m > maxEdge) && depth < 6 && flatY == null) {
       if (m === ab) { const p = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; emit(a, p, c, depth + 1); emit(p, b, c, depth + 1); }
       else if (m === bc) { const p = [(b[0] + c[0]) / 2, (b[1] + c[1]) / 2]; emit(a, b, p, depth + 1); emit(a, p, c, depth + 1); }
       else { const p = [(c[0] + a[0]) / 2, (c[1] + a[1]) / 2]; emit(a, b, p, depth + 1); emit(p, b, c, depth + 1); }
@@ -579,11 +658,86 @@ function buildAreas(ctx, B, gridH, near) {
       drape(B.dirt, a.pts, gridH, 0.03, shade(DIRT, 0.2), 12);
       if (a.name) fenceLine(ctx, B, gridH, [...a.pts, a.pts[0]], 1.9, 'Construction fence');
     } else if (GREEN_KINDS.includes(a.kind)) {
+      if (NO_DRAPE.includes(a.kind)) continue;      // zoning polygons — terrain colour only
       drape(B.green, a.pts, gridH, 0.025, shade(GRASS, 0.16), 9, null, cull);
     } else if (a.kind === 'highway:pedestrian' || a.kind === 'leisure:common') {
       drape(B.concrete, a.pts, gridH, 0.03, shade(PAVED, 0.12), 9);
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Waterfront Park: the lawn strip between Lake Street and the harbour, plus the
+// paved Greenway promenade that runs the length of it.
+// ---------------------------------------------------------------------------
+function buildWaterfrontGround(ctx, B, gridH) {
+  const { collide, locations, spots } = ctx;
+  const LAWN = C(0x6d8b48), WALK = C(0xbdb7a9), BIKE = C(0x4b4d51);
+  const shade = (base, amt) => (x, z) => {
+    const t = 1 + amt * ((((hashStr((x | 0) + ':' + (z | 0)) >>> 9) & 255) / 255) - 0.5);
+    return [base[0] * t, base[1] * t, base[2] * t];
+  };
+  drape(B.green, WATERFRONT_LAWN, gridH, 0.025, shade(LAWN, 0.14), 9);
+
+  // the promenade: a 3.2 m asphalt bike path with a concrete walking apron on the lake side
+  const path = resample(PROMENADE, 6);
+  ribbon(B.concrete, path.map(p => [p[0] - 2.6, p[1]]), gridH, 3.0, 0.05, WALK);
+  ribbon(B.asphalt, path, gridH, 3.2, 0.055, BIKE);
+
+  locations.push({ name: 'Waterfront Park', pts: WATERFRONT_LAWN });
+  spots.push({ name: 'Waterfront Park', x: -668, z: -110, r: 46, bonus: 300 });
+}
+
+// ---------------------------------------------------------------------------
+// Mapped footways and cycleways that are NOT already covered by a street's own
+// sidewalk band — park paths, the Burlington Greenway, plaza links, the shore
+// promenade. Without these the whole waterfront reads as untouched ground.
+// ---------------------------------------------------------------------------
+function buildPaths(ctx, B, gridH, near, park) {
+  const { WORLD } = ctx;
+  const mobile = !!ctx.quality.mobile;
+  const WALK = C(0xc0bbad), BIKE = C(0x4b4d51);
+  // every car street already draws a concrete band either side; anything inside that band
+  // would only z-fight with it
+  const covered = [];
+  for (const r of WORLD.roads || []) {
+    if (!CAR_KINDS.includes(r.kind) || !r.pts || r.pts.length < 2) continue;
+    const hw = roadWidth(r) / 2 + 4.4;
+    for (let i = 1; i < r.pts.length; i++) covered.push([r.pts[i - 1][0], r.pts[i - 1][1], r.pts[i][0], r.pts[i][1], hw * hw]);
+  }
+  const onStreet = (x, z) => {
+    for (const s of covered) {
+      const dx = s[2] - s[0], dz = s[3] - s[1], l2 = dx * dx + dz * dz || 1;
+      let t = ((x - s[0]) * dx + (z - s[1]) * dz) / l2; t = clamp(t, 0, 1);
+      const px = s[0] + dx * t - x, pz = s[1] + dz * t - z;
+      if (px * px + pz * pz < s[4]) return true;
+    }
+    return false;
+  };
+  const inPark = (x, z) => !!park && pointInPoly(x, z, park.pts);   // buildPark draws those itself
+
+  let n = 0;
+  for (const r of WORLD.roads || []) {
+    const bike = r.kind === 'cycleway';
+    if (!bike && r.kind !== 'footway' && r.kind !== 'path') continue;
+    if (!r.pts || r.pts.length < 2 || !r.pts.some(p => near(p[0], p[1], 60))) continue;
+    const pts = resample(r.pts, mobile ? 9 : 6);
+    // walk the polyline and emit only the stretches that stand clear of a street
+    let run = [];
+    const flush = () => {
+      if (run.length > 1) {
+        ribbon(bike ? B.asphalt : B.concrete, run, gridH, bike ? 3.2 : 2.2, bike ? 0.05 : 0.045, bike ? BIKE : WALK);
+        n++;
+      }
+      run = [];
+    };
+    for (const p of pts) {
+      if (!near(p[0], p[1], 60) || onStreet(p[0], p[1]) || inPark(p[0], p[1])) flush();
+      else run.push(p);
+    }
+    flush();
+  }
+  return n;
 }
 
 function stallLines(paint, pts, gridH) {
@@ -648,13 +802,18 @@ function buildMall(ctx, B, gridH, near) {
   // The brick colour lives in the texture; vertex colour is a *tint multiplier* so the
   // three D&K tones (rust / slate blue-grey / buff) read across the zones without
   // double-darkening the map.
-  const RUST = [1, 1, 1], SLATE = [0.80, 0.85, 0.93], BUFF = [1.14, 1.07, 0.92];
+  const RUST = [1, 1, 1], SLATE = [0.74, 0.81, 0.92], BUFF = [1.22, 1.12, 0.90];
   // fractions of half-width; finer than the D&K zones so the pavers hug the 5 m terrain lattice
   const lanes = [-1, -0.87, -0.74, -0.6, -0.47, -0.34, -0.21, -0.1, 0, 0.1, 0.21, 0.34, 0.47, 0.6, 0.74, 0.87, 1];
-  const tint = (f, x, z) => {
+  // The mall is not one uniform brick field (BURLINGTON-REFERENCE §4.1, D&K 2017 sheets):
+  // a dual-tone running bond along the shopfronts, and down the centre a tri-tone *linear*
+  // pattern — bands running the length of Church Street. A random speckle everywhere read as
+  // noise; keyed to the lane index the centre now reads as stripes you can follow downhill.
+  const BAND = [RUST, SLATE, BUFF, RUST, SLATE, RUST, BUFF, SLATE];
+  const tint = (f, k, x, z) => {
     const n = (((hashStr(((x * 2) | 0) + ':' + ((z * 2) | 0)) >>> 11) & 255) / 255);
-    const base = Math.abs(f) < 0.3 ? SLATE : (n > 0.86 ? BUFF : (n > 0.72 ? SLATE : RUST));
-    const t = 0.93 + 0.16 * n;
+    const base = Math.abs(f) < 0.5 ? BAND[k % BAND.length] : (n > 0.84 ? BUFF : RUST);
+    const t = 0.94 + 0.13 * n;
     return [base[0] * t, base[1] * t, base[2] * t];
   };
 
@@ -667,7 +826,7 @@ function buildMall(ctx, B, gridH, near) {
       const A2 = [a[0] + na[0] * oa1, 0, a[1] + na[1] * oa1]; A2[1] = gridH(A2[0], A2[2]) + 0.04;
       const Bp = [b[0] + nb[0] * ob0, 0, b[1] + nb[1] * ob0]; Bp[1] = gridH(Bp[0], Bp[2]) + 0.04;
       const B2 = [b[0] + nb[0] * ob1, 0, b[1] + nb[1] * ob1]; B2[1] = gridH(B2[0], B2[2]) + 0.04;
-      const col = tint((f0 + f1) / 2, a[0], a[1]);
+      const col = tint((f0 + f1) / 2, k, a[0], a[1]);
       const uv = (p) => [p[0] / 3.2, p[2] / 3.2];
       B.brick.quad(A, Bp, B2, A2, col, uv(A), uv(Bp), uv(B2), uv(A2));
     }
@@ -759,7 +918,7 @@ function nearestIdx(line, p) {
 // nested tri-tone diamond mitred into the intersection paving
 function diamond(B, gridH, p, n, t, R) {
   // tint multipliers over the brick map — slate, buff, rust, pale granite
-  const tones = [[0.80, 0.85, 0.93], [1.14, 1.07, 0.92], [1, 1, 1], [1.22, 1.2, 1.16]];
+  const tones = [[0.68, 0.76, 0.90], [1.26, 1.14, 0.90], [1, 0.97, 0.95], [1.34, 1.31, 1.24]];
   const rings = [R, R * 0.72, R * 0.46, R * 0.22, 0];
   const P = (u, v) => {
     const x = p[0] + n[0] * u + t[0] * v, z = p[1] + n[1] * u + t[1] * v;
@@ -1057,8 +1216,11 @@ function brickTexture() {
   const M = 3.2;                       // metres the tile covers
   const BW = 0.205 / M * S, BH = 0.098 / M * S;
   g.fillStyle = '#5d4436'; g.fillRect(0, 0, S, S);
-  const tones = ['#b06a44', '#a05c3c', '#9c5539', '#b8794f', '#8d7c7e', '#c2a37c'];
-  const w = ['#b06a44', '#a05c3c', '#9c5539', '#b8794f'];
+  // Warm red-orange to salmon, "visibly varied paver to paver" — but only just. The odd
+  // grey and buff pavers used to run at 21% and read as a speckled, dirty field; the
+  // three D&K tones belong to the zone tinting above, not to individual bricks.
+  const tones = ['#b06a44', '#a05c3c', '#9c5539', '#b8794f', '#9c8b83', '#bfa585'];
+  const w = ['#b06a44', '#a05c3c', '#9c5539', '#b8794f', '#ab6440', '#a96e4b'];
   let seed = 9;
   const rr = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
   const rows = Math.round(S / BH), cols = Math.ceil(S / BW) + 1;
@@ -1068,7 +1230,7 @@ function brickTexture() {
     for (let i = -1; i < cols; i++) {
       const x = i * BW + off, y = r * bh;
       const p = rr();
-      const col = p > 0.9 ? tones[5] : p > 0.79 ? tones[4] : w[(rr() * w.length) | 0];
+      const col = p > 0.945 ? tones[5] : p > 0.895 ? tones[4] : w[(rr() * w.length) | 0];
       g.fillStyle = col;
       g.fillRect(x + 0.6, y + 0.6, BW - 1.2, bh - 1.2);
       if (rr() > 0.86) { g.fillStyle = 'rgba(0,0,0,0.10)'; g.fillRect(x + 0.6, y + 0.6, BW - 1.2, bh - 1.2); }
