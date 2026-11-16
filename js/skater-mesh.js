@@ -107,7 +107,12 @@ export class SkaterMesh {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    this.leaves = new THREE.Points(g, new THREE.PointsMaterial({ size: 0.22, vertexColors: true, transparent: true, opacity: 0.95, depthWrite: false, sizeAttenuation: true }));
+    // a soft round sprite, so particles read as puffs and leaves instead of white squares
+    const dot = document.createElement('canvas'); dot.width = dot.height = 32;
+    const dg = dot.getContext('2d'), gr = dg.createRadialGradient(16, 16, 0, 16, 16, 16);
+    gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.55, 'rgba(255,255,255,.85)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    dg.fillStyle = gr; dg.fillRect(0, 0, 32, 32);
+    this.leaves = new THREE.Points(g, new THREE.PointsMaterial({ size: 0.22, map: new THREE.CanvasTexture(dot), vertexColors: true, transparent: true, opacity: 0.95, depthWrite: false, sizeAttenuation: true }));
     this.leaves.name = 'maple-leaves'; this.leaves.visible = false; this.leaves.frustumCulled = false;
     scene.add(this.leaves);
     this.leafV = new Float32Array(N * 3); this.leafT = 0;
@@ -123,22 +128,26 @@ export class SkaterMesh {
     }
     this.leaves.geometry.attributes.position.needsUpdate = true;
     this.leaves.geometry.attributes.color.needsUpdate = true;
-    this.leafT = 1.6; this.leaves.visible = true;
+    this.leaves.geometry.setDrawRange(0, Infinity); this.leaves.material.size = 0.22;
+    this.leafT = this.leafT0 = 1.6; this.leaves.visible = true;
   }
   // STOMP dust: same particle pool as the maple leaves, recoloured — a low, wide puff
   // kicked out sideways from under the trucks on a big clean landing.
+  // 12 small tan puffs, low and quick (0.4 s) — dust, not confetti over the thumbs.
   stompBurst(at) {
-    const N = this.leafN, p = this.leaves.geometry.attributes.position.array, c = this.leaves.geometry.attributes.color.array, v = this.leafV;
+    const N = 12, p = this.leaves.geometry.attributes.position.array, c = this.leaves.geometry.attributes.color.array, v = this.leafV;
     for (let i = 0; i < N; i++) {
-      p[i * 3] = at.x + (Math.random() - 0.5) * 0.5; p[i * 3 + 1] = at.y + 0.06 + Math.random() * 0.15; p[i * 3 + 2] = at.z + (Math.random() - 0.5) * 0.5;
-      const a = Math.random() * TAU, s = 3.0 + Math.random() * 3.5;
-      v[i * 3] = Math.cos(a) * s; v[i * 3 + 1] = 0.6 + Math.random() * 1.4; v[i * 3 + 2] = Math.sin(a) * s;
-      const t = 0.75 + Math.random() * 0.2;                    // warm dust greys
-      c[i * 3] = t; c[i * 3 + 1] = t * 0.97; c[i * 3 + 2] = t * 0.9;
+      p[i * 3] = at.x + (Math.random() - 0.5) * 0.4; p[i * 3 + 1] = at.y + 0.05 + Math.random() * 0.08; p[i * 3 + 2] = at.z + (Math.random() - 0.5) * 0.4;
+      const a = (i / N) * TAU + Math.random() * 0.4, s = 1.8 + Math.random() * 1.2;
+      v[i * 3] = Math.cos(a) * s; v[i * 3 + 1] = 0.3 + Math.random() * 0.5; v[i * 3 + 2] = Math.sin(a) * s;
+      const t = 0.62 + Math.random() * 0.12;                   // tan street dust
+      c[i * 3] = t; c[i * 3 + 1] = t * 0.86; c[i * 3 + 2] = t * 0.66;
     }
+    this.leaves.geometry.setDrawRange(0, N);
+    this.leaves.material.size = 0.09;
     this.leaves.geometry.attributes.position.needsUpdate = true;
     this.leaves.geometry.attributes.color.needsUpdate = true;
-    this.leafT = 0.9; this.leaves.visible = true;
+    this.leafT = this.leafT0 = 0.4; this.leaves.visible = true;
   }
   _stepLeaves(dt) {
     if (this.leafT <= 0) return;
@@ -151,7 +160,7 @@ export class SkaterMesh {
       p[i * 3] += v[i * 3] * dt; p[i * 3 + 1] += v[i * 3 + 1] * dt; p[i * 3 + 2] += v[i * 3 + 2] * dt;
     }
     this.leaves.geometry.attributes.position.needsUpdate = true;
-    this.leaves.material.opacity = clamp(this.leafT / 0.6, 0, 1) * 0.95;
+    this.leaves.material.opacity = clamp(this.leafT / Math.min(0.6, this.leafT0 || 0.6), 0, 1) * 0.95;
   }
 
   // ---------------------------------------------------------------- build ----
