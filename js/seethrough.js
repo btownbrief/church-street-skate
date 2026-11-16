@@ -3,17 +3,19 @@
 // player is never hidden behind decoration. One shared set of uniforms, set once per frame
 // from the skater's projected position; any material passed to seeThrough() honours it.
 // Only fragments that are clearly IN FRONT of the skater (closer to the camera by > ~1.2 m)
-// are cut, so whatever he is riding on or standing beside stays solid.
+// are cut, so whatever he is riding on or standing beside stays solid. Decoration within 2 m
+// of the lens is not drawn at all (a pennant brushing the camera is just a giant blob).
 import * as THREE from '../vendor/three.module.min.js';
 
-const U = { uHole: { value: new THREE.Vector2(-1e4, -1e4) }, uHoleR: { value: 0 }, uHoleZ: { value: 0 } };
+const U = { uHole: { value: new THREE.Vector2(-1e4, -1e4) }, uHoleR: { value: 0 }, uHoleZ: { value: 0 }, uNearZ: { value: 0 } };
 
 export function seeThrough(mat) {
   if (!mat || mat.userData.seeThrough) return mat;
   mat.userData.seeThrough = true;
   mat.onBeforeCompile = (sh) => {
-    sh.uniforms.uHole = U.uHole; sh.uniforms.uHoleR = U.uHoleR; sh.uniforms.uHoleZ = U.uHoleZ;
-    sh.fragmentShader = 'uniform vec2 uHole;\nuniform float uHoleR;\nuniform float uHoleZ;\n' + sh.fragmentShader.replace('void main() {', `void main() {
+    sh.uniforms.uHole = U.uHole; sh.uniforms.uHoleR = U.uHoleR; sh.uniforms.uHoleZ = U.uHoleZ; sh.uniforms.uNearZ = U.uNearZ;
+    sh.fragmentShader = 'uniform vec2 uHole;\nuniform float uHoleR;\nuniform float uHoleZ;\nuniform float uNearZ;\n' + sh.fragmentShader.replace('void main() {', `void main() {
+  if (gl_FragCoord.z < uNearZ) discard;   // decoration brushing the lens (bunting, canopies) just isn't drawn
   if (uHoleR > 0.0 && gl_FragCoord.z < uHoleZ) {
     float dd = distance(gl_FragCoord.xy, uHole) / uHoleR;
     if (dd < 1.0) {
@@ -26,10 +28,13 @@ export function seeThrough(mat) {
   return mat;
 }
 
-const _p = new THREE.Vector3(), _q = new THREE.Vector3(), _sz = new THREE.Vector2();
+const _p = new THREE.Vector3(), _q = new THREE.Vector3(), _sz = new THREE.Vector2(), _fw = new THREE.Vector3();
 // Call once per frame after the camera has moved, before rendering.
 export function updateHole(camera, renderer, pos, enabled = true) {
-  if (!enabled) { U.uHoleR.value = 0; return; }
+  if (!enabled) { U.uHoleR.value = 0; U.uNearZ.value = 0; return; }
+  camera.getWorldDirection(_fw);
+  _q.copy(camera.position).addScaledVector(_fw, 2.0).project(camera);
+  U.uNearZ.value = _q.z * 0.5 + 0.5;
   renderer.getDrawingBufferSize(_sz);
   _p.set(pos.x, pos.y + 0.85, pos.z);                       // the skater's middle
   _q.copy(camera.position).sub(_p); const d = _q.length();
