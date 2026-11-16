@@ -269,33 +269,64 @@ checks.maple = async () => {
     r.trick ? `scored ${r.trick.pts} (base 1200 × special 1.5), banked [${(r.banked || []).join(", ")}], meter drained to ${r.drained} then re-earned to ${r.after} by the bank` : 'never triggered');
 };
 
-// ------------------------------------------------------------ 9. RUN MODE ----
+// ------------------------------------------------- 9. TODAY'S LINE (was RUN) ----
 checks.run = async () => {
-  // restart the page into run mode so the real title-screen button path is exercised
-  await page.goto(process.env.URL || 'http://localhost:8765/index.html');
+  // restart the page into a pinned day (?day=1 = College Hill) through the real title button
+  const base = (process.env.URL || 'http://localhost:8765/index.html').replace(/\?.*$/, '');
+  await page.goto(base + '?day=1');
   await page.waitForFunction(() => !!window.__tp && !document.querySelector('#btn-play').disabled, null, { timeout: 180000 });
+  const title = await ev(() => document.querySelector('#btn-run').textContent);
   await page.click('#btn-run');
   await page.waitForTimeout(300);
-  const started = await ev(() => ({ timer: document.querySelector('#timer').textContent, run: document.body.classList.contains('run'), score: window.__dbg().score }));
   const r = await ev(() => {
-    // burn the whole clock in one go, landing a few tricks on the way
-    for (let k = 0; k < 12; k++) { window.__sim(2, ['ArrowUp']); window.__sim(0.4, ['Space']); window.__sim(0.05, ['KeyJ']); window.__sim(2.2); }
-    window.__sim(80);
-    return {
-      shown: document.querySelector('#screen-results').classList.contains('on'),
-      score: document.querySelector('#res-score').textContent,
-      stats: document.querySelector('#res-stats').textContent,
-      timer: document.querySelector('#timer').textContent,
-      lbVisible: !document.querySelector('#lb').classList.contains('hidden'),
-    };
+    const out = { started: window.__T.state(), timer0: document.querySelector('#timer').textContent, chips: document.querySelectorAll('#goals .chip').length };
+    window.__sim(1.0);                                     // no input: the clock must not run
+    out.idle = window.__T.state().runLeft;
+    // collect the first letter of the line → +500 and +5 s
+    window.__sim(0.5, ['ArrowUp']);
+    const before = window.__T.state();
+    const it = window.__letters().items[0];
+    window.__tp(it.x, it.z, Math.PI / 2, 0); for (let i = 0; i < 6; i++) window.__sim(1 / 60);
+    const after = window.__T.state();
+    out.letter = { dt: +(after.runLeft - before.runLeft).toFixed(2), dScore: after.score - before.score };
+    // LAST CALL at 0:20: banks double
+    window.__T.setLeft(20.5); window.__sim(0.7);
+    out.lastCall = window.__T.state().lastCall && document.body.classList.contains('lastcall');
+    window.__recOn();
+    window.__tp(-200, 10, Math.PI / 2, 9);
+    window.__sim(0.4, ['Space']); window.__sim(0.06, ['KeyJ']); window.__sim(2.5);
+    const bank = window.__rec.find(e => e.type === 'bank'); out.bankMult = bank ? bank.mult : null;
+    window.__recOff();
+    window.__T.setLeft(0.5); window.__sim(1.5);
+    out.shown = document.querySelector('#screen-results').classList.contains('on');
+    out.res = document.querySelector('#screen-results').innerText.replace(/\s+/g, ' ').slice(0, 600);
+    out.lbVisible = !document.querySelector('#lb').classList.contains('hidden');
+    out.daily = localStorage.getItem('css-daily'); out.streak = localStorage.getItem('css-streak');
+    return out;
   });
-  report('2-minute run reaches the buzzer', started.run && started.timer === '2:00' && r.shown,
-    `clock started at ${started.timer}, results overlay shown, final ${r.score} · ${r.stats.replace(/\s+/g, ' ')}`);
+  report("Today's Line starts on the day's line, clock waits for input",
+    /College Hill/.test(title) && r.started.line === 'College Hill' && r.timer0 === '1:30' && r.idle === 90 && r.chips === 3,
+    `title "${title}", start ${r.started.pos}, clock ${r.timer0} → ${r.idle} s after 1 s idle, ${r.chips} goal chips`);
+  report('a letter adds 5 s and 500', r.letter.dt > 4.5 && r.letter.dScore >= 500, JSON.stringify(r.letter));
+  report('Last Call doubles banks in the final 20 s', r.lastCall && r.bankMult === 2, `lastCall=${r.lastCall} bank mult=${r.bankMult}`);
+  report("results show today's best + tomorrow's line", r.shown && /Tomorrow: City Hall/.test(r.res) && /today's best/.test(r.res) && /test-1/.test(r.daily || ''), r.res);
   report('run mode offers the leaderboard', r.lbVisible, `leaderboard panel visible=${r.lbVisible}`);
   await shot('results');
   // back to free skate for anything after this
   await page.click('#btn-free');
   await page.waitForTimeout(200);
+};
+
+// ----------------------------------------------- UPGRADE 2026-11-16: NO FARMING ----
+checks.stale = async () => {
+  const r = await ev(() => {
+    window.__freshen();
+    window.__tp(-11, -60, Math.PI, 0); window.__sim(0.2);
+    const s0 = window.__dbg().score;
+    for (let k = 0; k < 20; k++) { window.__press('Space'); window.__sim(0.45); window.__release('Space'); window.__sim(0.05, ['KeyJ']); window.__sim(2.5); }
+    return { standing: window.__dbg().score - s0 };
+  });
+  report('20 standing flip-ollies pay under 1,500', r.standing < 1500, `${r.standing} points (was ~8,000 before staleness)`);
 };
 
 // ------------------------------------------------------------ 10. LETTERS ----
@@ -539,11 +570,11 @@ checks.funpass = async () => {
     out.stomp = st ? { got: true, speed: +st.speed.toFixed(1) } : { got: false };
     out.stompFaster = window.__dbg().state === 'ride' && Math.hypot(window.__dbg().vel[0], window.__dbg().vel[2]) > spBefore;
     window.__recOff();
-    // 3. trick tape rows appear and carry the trick name
+    // 3. (2026-11-16: the trick tape is gone) a first-time trick shows FRESH in the combo line
+    window.__freshen();
     window.__tp(-476, 10, Math.PI / 2, 8);
-    window.__sim(0.4, ['Space']); window.__sim(0.06, ['KeyJ']); window.__sim(1.2);
-    const tape = document.querySelector('#tape');
-    out.tape = tape ? tape.textContent : '(no #tape)';
+    window.__sim(0.4, ['Space']); window.__sim(0.06, ['KeyJ']); window.__sim(0.5);
+    out.tape = document.querySelector('#combo-tricks').textContent;
     // 4. new furniture exists: long mall rails, street rails, roll-ins, marketplace booter
     const E = window.__world.collide.all.edges, R = window.__world.collide.all.ramps;
     const mallRail = E.find(e => e.name === 'Mall rail');
@@ -555,7 +586,7 @@ checks.funpass = async () => {
   });
   report('backflip scores on back-key press', /Backflip/.test(r.backflip) && r.backflipState === 'ride', `${r.backflip} → ${r.backflipState}`);
   report('stomp fires + boosts on big clean landings', r.stomp.got && r.stompFaster, JSON.stringify(r.stomp));
-  report('trick tape shows landed tricks', /Kickflip/.test(r.tape), JSON.stringify(r.tape.slice(0, 80)));
+  report('combo line marks a first-time trick FRESH', /Kickflip/.test(r.tape) && /FRESH/.test(r.tape), JSON.stringify(r.tape.slice(0, 80)));
   report('long rails placed (mall 14 m + streets 18 m)', r.mallRailLen >= 13 && r.streetRails.every(l => l >= 17), `mall ${r.mallRailLen}, street ${r.streetRails}`);
   report('roll-ins + Marketplace booter built', r.rollIns.every(Boolean) && r.booter, JSON.stringify({ rollIns: r.rollIns, booter: r.booter }));
 

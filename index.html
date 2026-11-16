@@ -4,13 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Church Street Skate — Burlington, Vermont</title>
-<meta name="description" content="Skate downtown Burlington, Vermont: ollie the City Hall steps, grind the Church Street planters, bomb College Street toward the lake. A 3D open-world skateboarding game in the browser.">
+<meta name="description" content="A 3D skateboarding score attack in downtown Burlington, Vermont: a new line through town every day — Church Street, College Hill, City Hall, the waterfront, Main Street.">
 <meta name="theme-color" content="#1a2433">
 <meta property="og:title" content="Church Street Skate">
 <meta property="og:description" content="Skate an accurate downtown Burlington, VT in your browser — Church Street Marketplace, City Hall Park, the hills down to the lake.">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 <script data-goatcounter="https://btown-brief.goatcounter.com/count"
         async src="//gc.zgo.at/count.js"></script>
@@ -25,58 +28,57 @@
 <div id="hud"></div>
 <div id="touch" aria-hidden="true">
   <div id="stick-zone"><div id="stick-base"><div id="stick-knob"></div></div></div>
-  <div id="flick-zone"><div id="flick-base"><div id="flick-knob"></div>
-    <span class="fl fl-n">OLLIE</span><span class="fl fl-nw">KICK</span><span class="fl fl-ne">HEEL</span>
-    <span class="fl fl-w">SHOVE</span><span class="fl fl-e">SHOVE</span><span class="fl fl-s">HOLD</span>
-  </div></div>
   <div id="buttons">
-    <button class="tb" id="b-grab">GRAB</button>
-    <button class="tb" id="b-shove">SHOVE</button>
-    <button class="tb" id="b-flip">FLIP</button>
+    <button class="tb" id="b-trick">TRICK</button>
     <button class="tb big" id="b-ollie">OLLIE</button>
   </div>
 </div>
-<div id="hint" aria-hidden="true"><b>Push</b> — flick the stick up · <b>OLLIE</b> — hold, then let go</div>
+<div id="coach" aria-hidden="true"></div>
 <div id="screen-title" class="screen on">
-  <div class="card">
+  <div class="card title">
     <div class="eyebrow">Burlington, Vermont</div>
     <h1>Church Street<br>Skate</h1>
-    <p class="sub">Four blocks of brick, the hill down to the lake, City Hall steps, the planters everybody grinds anyway.</p>
-    <p class="fineprint">Burlington ordinance §27-18: skateboarding on the bricks is, technically, a trespass. The traveled portions of College, Bank and Cherry are exempt. Good luck.</p>
-    <div class="modes">
-      <button id="btn-play" class="primary">Free skate</button>
-      <button id="btn-run" class="primary alt">2-minute run</button>
-    </div>
-    <p class="modenote">Free skate is the whole downtown, no clock. A 2-minute run scores one timed lap for the monthly leaderboard.</p>
-    <div id="how" class="how"></div>
-    <div id="loading" class="loading">Building Burlington…</div>
-    <div class="fine">Map data © OpenStreetMap contributors · Elevation USGS 3DEP · Original low-poly art</div>
+    <p class="tag">3D skateboarding score attack</p>
+    <button id="btn-run" class="primary go" disabled><span class="b1" id="run-label">Building Burlington…</span><span class="b2" id="run-line"></span></button>
+    <div id="title-meta" class="meta"></div>
+    <button id="btn-play" class="link" disabled>Free skate</button>
+    <div class="fine">Map data © OpenStreetMap contributors · Elevation USGS 3DEP</div>
   </div>
 </div>
 <div id="screen-pause" class="screen">
   <div class="card small">
     <h2>Paused</h2>
+    <div class="row"><button id="btn-resume" class="primary">Resume</button><button id="btn-respawn">Restart</button><button id="btn-mute">Sound: on</button></div>
+    <div id="pause-goals" class="pgoals"></div>
     <div id="stats"></div>
-    <div class="row"><button id="btn-resume" class="primary">Resume</button><button id="btn-respawn">Back to Church St</button><button id="btn-mute">Sound: on</button><button id="btn-flick">Tricks: buttons</button></div>
-    <div class="panes">
-      <div class="pane">
-        <h3 class="secttl">Burlington spots</h3>
-        <div id="spots-list" class="spots one"></div>
+    <div class="row slim"><button id="btn-map-toggle">Map: off</button></div>
+    <p id="keys" class="keys">W push · S brake · A/D steer &amp; spin · Space hold, let go to ollie · J kickflip · K heelflip · L shove-it · Shift grab, hold through a landing to manual · M map · P pause</p>
+    <details id="collection">
+      <summary id="coll-sum">Collection</summary>
+      <div class="panes">
+        <div class="pane">
+          <h3 class="secttl">Burlington spots</h3>
+          <div id="spots-list" class="spots one"></div>
+        </div>
+        <div class="pane">
+          <h3 class="secttl">Named gaps <span id="gaps-count"></span></h3>
+          <div id="gaps-list" class="spots one"></div>
+        </div>
       </div>
-      <div class="pane">
-        <h3 class="secttl">Named gaps <span id="gaps-count"></span></h3>
-        <div id="gaps-list" class="spots one"></div>
-      </div>
-    </div>
-    <h3 class="secttl">Challenges</h3>
-    <div id="chal-list" class="chals"></div>
+      <h3 class="secttl">Challenges</h3>
+      <div id="chal-list" class="chals"></div>
+    </details>
   </div>
 </div>
 <div id="screen-results" class="screen">
   <div class="card small">
-    <div class="eyebrow">2-minute run</div>
+    <div class="eyebrow" id="res-eyebrow">Today's Line</div>
     <h2 id="res-score">0</h2>
+    <div id="res-badge" class="badge"></div>
+    <div class="row"><button id="btn-again" class="primary">Again</button><button id="btn-free">Free skate</button></div>
+    <div id="res-goals" class="rgoals"></div>
     <div id="res-stats"></div>
+    <div id="res-tomorrow" class="tomorrow"></div>
     <div class="lb hidden" id="lb">
       <div class="lb-tabs">
         <button class="lb-chip sel" id="lbThisBtn">🏆 THIS MONTH</button>
@@ -90,7 +92,6 @@
       </div>
       <button class="lb-chip lb-rename hidden" id="lbRenameBtn">✏️ CHANGE NAME</button>
     </div>
-    <div class="row"><button id="btn-again" class="primary">Skate again</button><button id="btn-free">Free skate</button></div>
   </div>
 </div>
 <script type="module" src="js/main.js"></script>

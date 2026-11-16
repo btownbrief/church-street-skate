@@ -559,7 +559,7 @@ export function createNpcs(ctx) {
     if (spd > 3 && d2 < 64 && !p.fall) {
       const fx = p.x - (sx + sk.vel.x * 0.9), fz = p.z - (sz + sk.vel.z * 0.9);
       const closing = Math.hypot(fx, fz);
-      if (closing < 1.6 && p.hop <= 0) {
+      if (closing < 2.1 && p.hop <= 0) {      // (2026-11-16: 1.6 → 2.1, people see you coming)
         const rx = -sk.vel.z / (spd || 1), rz = sk.vel.x / (spd || 1);   // sidestep axis
         const sign = ((p.x - sx) * rx + (p.z - sz) * rz) >= 0 ? 1 : -1;
         p.hop = 0.42; p.hopDir = sign; p.hopAmt = 0;
@@ -586,7 +586,7 @@ export function createNpcs(ctx) {
     if (p.fall) { p.hop = 0; return; }
 
     // --- sidestep hop
-    if (p.hop > 0) { p.hop -= dt; p.hopAmt = lerp(p.hopAmt, p.hopDir * 1.0, 1 - Math.exp(-12 * dt)); }
+    if (p.hop > 0) { p.hop -= dt; p.hopAmt = lerp(p.hopAmt, p.hopDir * 1.35, 1 - Math.exp(-12 * dt)); }
     else p.hopAmt = lerp(p.hopAmt, 0, 1 - Math.exp(-2.5 * dt));
 
     // --- walking / stopping

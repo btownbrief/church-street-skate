@@ -41,7 +41,7 @@ export class Skater {
     this.events = []; this.spots = []; this.spotsHit = new Set();
     this.stats = { clean: 0 };
     this._acc = 0; this.wallHitCooldown = 0; this.sketchy = 0;
-    this.input = null; this.t = 0; this.used = new Map(); this._slowPop = false; this._airFromLaunch = false; this._takeoffY = 0;
+    this.input = null; this.t = 0; this.bankMult = 1; this.used = new Map(); this._slowPop = false; this._airFromLaunch = false; this._takeoffY = 0;
     this.lean = 0;                       // visual lean from steering
     this.hitboxR = CFG.skaterRadius;
   }
@@ -58,7 +58,7 @@ export class Skater {
     this.yawVel = 0; this.spinAccum = 0; this.shoveOff = 0; this.charging = false; this.charge = 0; this.crouch = 0; this.balance = 0;
     this.lastEdge = null; this.grindCooldown = 0; this.wallHitCooldown = 0; this._landedAt = -1; this._revertAt = -1; this.groundKind = 'ground'; this.groundObj = null; this.normal.set(0, 1, 0);
     this.onGround = true; this._acc = 0; this.sketchy = 0; this.braking = false; this._coyote = null;
-    const P = this._pend; P.flipA = P.flipB = P.shove = P.olliePressed = P.ollieReleased = P.ollieCancel = false;
+    const P = this._pend; P.flipA = P.flipB = P.shove = P.dbl = P.olliePressed = P.ollieReleased = P.ollieCancel = false;
     this.events.length = 0;
   }
 
@@ -67,19 +67,19 @@ export class Skater {
     this.input = input; this._acc += Math.min(dt, 0.1);
     // latch one-shot edges until a substep consumes them (frames can be shorter than a substep)
     const P = this._pend;
-    P.flipA = P.flipA || input.flipA; P.flipB = P.flipB || input.flipB; P.shove = P.shove || input.shove;
+    P.flipA = P.flipA || input.flipA; P.flipB = P.flipB || input.flipB; P.shove = P.shove || input.shove; P.dbl = P.dbl || !!input.dbl;
     P.olliePressed = P.olliePressed || input.olliePressed; P.ollieReleased = P.ollieReleased || input.ollieReleased;
     P.ollieCancel = P.ollieCancel || input.ollieCancelled;
     let n = 0;
     while (this._acc >= STEP && n < 12) { this.step(STEP, input); this._acc -= STEP; n++; }
   }
-  _pend = { flipA: false, flipB: false, shove: false, olliePressed: false, ollieReleased: false, ollieCancel: false };
-  _ev = { flipA: false, flipB: false, shove: false, olliePressed: false, ollieReleased: false, ollieCancel: false };
+  _pend = { flipA: false, flipB: false, shove: false, dbl: false, olliePressed: false, ollieReleased: false, ollieCancel: false };
+  _ev = { flipA: false, flipB: false, shove: false, dbl: false, olliePressed: false, ollieReleased: false, ollieCancel: false };
 
   step(dt, inp) {
     this.t += dt;
-    const P = this._pend; const ev = this._ev; ev.flipA = P.flipA; ev.flipB = P.flipB; ev.shove = P.shove; ev.olliePressed = P.olliePressed; ev.ollieReleased = P.ollieReleased; ev.ollieCancel = P.ollieCancel;
-    P.flipA = P.flipB = P.shove = P.olliePressed = P.ollieReleased = P.ollieCancel = false;
+    const P = this._pend; const ev = this._ev; ev.flipA = P.flipA; ev.flipB = P.flipB; ev.shove = P.shove; ev.dbl = P.dbl; ev.olliePressed = P.olliePressed; ev.ollieReleased = P.ollieReleased; ev.ollieCancel = P.ollieCancel;
+    P.flipA = P.flipB = P.shove = P.dbl = P.olliePressed = P.ollieReleased = P.ollieCancel = false;
     if (this.grindCooldown > 0) this.grindCooldown -= dt;
     if (this.wallHitCooldown > 0) this.wallHitCooldown -= dt;
     // A charge can only be released on the ground or a grind. If the board left the ground
@@ -247,7 +247,7 @@ export class Skater {
       if (vn < 0) {
         // Cars never bail you (his call): riding into bodywork bounces, every speed
         const isCar = hit.obj && hit.obj.kind === 'car';
-        if (!isCar && -vn > CFG.wallBailSpeed && this.wallHitCooldown <= 0) { this.startBail('wall'); return; }
+        if (!isCar && -vn > this.slamSpeed(hit.obj) && this.wallHitCooldown <= 0) { this._hitObj = hit.obj; this.startBail('wall'); return; }
         v.x -= hit.nx * vn * 1.05; v.z -= hit.nz * vn * 1.05; this.wallHitCooldown = 0.3; if (-vn > 2) this.emit('bump', { speed: -vn });
       }
     }
@@ -273,6 +273,13 @@ export class Skater {
     this.onGround = true;
   }
 
+  // How hard you must hit something to slam. Building walls and tall solid things: 9 m/s
+  // into them. Low skate furniture (benches, planters, ledges, kickers' sides) only slams at
+  // 13 m/s — below that you bounce off it, because riding into a ledge is what skaters do.
+  slamSpeed(o) {
+    if (o && o.type === 'surface' && o.top - this.pos.y < 1.0) return CFG.wallBailSpeed + 4;
+    return CFG.wallBailSpeed;
+  }
   // Clacked through a knee-high prop: −15% speed and a 'clack', once per prop.
   softProp(b) {
     if (!b) { if (this._softT > 0) this._softT -= STEP; else this._soft = null; return; }
@@ -291,10 +298,18 @@ export class Skater {
     // THE MAPLE LEAF — signature trick, both flip buttons on the same substep while the
     // special meter is full. Checked FIRST: otherwise the flipA branch below eats the input
     // and this could never fire.
-    if (ev.flipA && ev.flipB && this.state === 'air' && this.special >= 1) {
+    if (((ev.flipA && ev.flipB) || ev.dbl) && this.state === 'air' && this.special >= 1) {
       this.flip = { kind: 'maple', t: 0, dur: CFG.flipTime * 2.2, flipDir: 1, shoveDir: 1 };
       this.emit('maple');
       return;
+    }
+    // TOUCH DOUBLE-TAP on TRICK: turn the kickflip just started into a 360 Flip (window 0.25 s),
+    // or chain one onto a flip that's nearly done
+    if (ev.dbl && this.state === 'air') {
+      const g = this.flip;
+      if (g && (g.kind === 'kickflip' || g.kind === 'heelflip') && g.t < 0.25) { g.kind = 'treflip'; g.dur = CFG.flipTime * 1.35; g.t = 0; g.flipDir = 1; g.shoveDir = -1; g.vari = null; return; }
+      if (!g) { this.flip = { kind: 'treflip', t: 0, dur: CFG.flipTime * 1.35, flipDir: 1, shoveDir: -1 }; return; }
+      if (g.t > g.dur * 0.8) { this.finishFlip(); this.flip = { kind: 'treflip', t: 0, dur: CFG.flipTime * 1.35, flipDir: 1, shoveDir: -1, chain: true }; return; }
     }
     if (ev.flipA || ev.flipB) {
       const kind = ev.flipA ? 'kickflip' : 'heelflip';
@@ -304,13 +319,13 @@ export class Skater {
       let vari = null;
       if (inp.steer < -0.3) vari = ev.flipA ? ['Hardflip', CFG.score.hardflip] : ['Inward Heelflip', CFG.score.inward];
       else if (inp.steer > 0.3) vari = ev.flipA ? ['Varial Kickflip', CFG.score.varialkick] : ['Laser Flip', CFG.score.laser];
-      if (f && f.kind === 'shoveit' && f.t < 0.18) { f.kind = ev.flipA ? 'treflip' : 'varial'; f.dur = CFG.flipTime * 1.35; f.t = 0; f.flipDir = ev.flipA ? 1 : -1; f.vari = null; }
+      if (f && f.kind === 'shoveit' && f.t < 0.25) { f.kind = ev.flipA ? 'treflip' : 'varial'; f.dur = CFG.flipTime * 1.35; f.t = 0; f.flipDir = ev.flipA ? 1 : -1; f.vari = null; }
       else if (!f) this.flip = { kind, t: 0, dur: CFG.flipTime * (vari ? 1.15 : 1), flipDir: kind === 'kickflip' ? 1 : -1, shoveDir: vari ? (inp.steer > 0 ? -1 : 1) * 0.5 : 0, vari };
       else if (f.t > f.dur * 0.8) { this.finishFlip(); this.flip = { kind, t: 0, dur: CFG.flipTime, flipDir: kind === 'kickflip' ? 1 : -1, shoveDir: 0, chain: true }; }
     }
     if (ev.shove) {
       const dir = inp.steer < -0.2 ? 1 : -1; const f = this.flip;
-      if (f && (f.kind === 'kickflip' || f.kind === 'heelflip') && f.t < 0.18) { f.kind = f.kind === 'kickflip' ? 'treflip' : 'varial'; f.dur = CFG.flipTime * 1.35; f.t = 0; f.shoveDir = dir; f.vari = null; }
+      if (f && (f.kind === 'kickflip' || f.kind === 'heelflip') && f.t < 0.25) { f.kind = f.kind === 'kickflip' ? 'treflip' : 'varial'; f.dur = CFG.flipTime * 1.35; f.t = 0; f.shoveDir = dir; f.vari = null; }
       else if (!f) this.flip = { kind: 'shoveit', t: 0, dur: CFG.flipTime * 0.9, flipDir: 0, shoveDir: dir };
       else if (f.t > f.dur * 0.8) { this.finishFlip(); this.flip = { kind: 'shoveit', t: 0, dur: CFG.flipTime * 0.9, flipDir: 0, shoveDir: dir, chain: true }; }
     }
@@ -382,7 +397,7 @@ export class Skater {
     // walls
     const hit = cw.resolveWalls(p, this.hitboxR, p.y, p.y + 1.6);
     this.softProp(cw.softHit);
-    if (hit) { const vn = v.x * hit.nx + v.z * hit.nz; if (vn < 0) { const isCar = hit.obj && hit.obj.kind === 'car'; if (!isCar && -vn > CFG.wallBailSpeed) { this.startBail('wall'); return; } v.x -= hit.nx * vn * 1.2; v.z -= hit.nz * vn * 1.2; } }
+    if (hit) { const vn = v.x * hit.nx + v.z * hit.nz; if (vn < 0) { const isCar = hit.obj && hit.obj.kind === 'car'; if (!isCar && -vn > this.slamSpeed(hit.obj)) { this._hitObj = hit.obj; this.startBail('wall'); return; } v.x -= hit.nx * vn * 1.2; v.z -= hit.nz * vn * 1.2; } }
     // ceiling
     const ceil = cw.ceilingAt(p.x, p.z, p.y); if (p.y + 1.7 > ceil && v.y > 0) { p.y = ceil - 1.7; v.y = 0; }
     // grind snap
@@ -579,7 +594,8 @@ export class Skater {
     this.state = 'bail'; this.flip = null; this.bodyFlip = null; this.grind = null; this.manual = null; this.grab = null; this.balance = 0; this.charging = false; this.shoveOff = 0;
     const lost = this.comboValue(); this.combo = []; this.comboPending = 0; this.session.bails++;
     this.flow *= 0.6; this._flowFull = false; this.special *= 0.5;
-    this.emit('bail', { why, lost });
+    const ho = this._hitObj; this._hitObj = null;
+    this.emit('bail', { why, lost, obj: ho ? (ho.name || ho.kind || ho.type) : null, objType: ho ? ho.type : null });
     if (why === 'wall' || why === 'car' || why === 'npc') { this.vel.multiplyScalar(0.3); this.vel.y = 2.5; } else { this.vel.x *= 0.7; this.vel.z *= 0.7; }
     this.bail.grounded = 0;
   }
@@ -628,21 +644,24 @@ export class Skater {
   }
   comboValue() { const n = this.combo.filter(t => !t.silent).length; const sum = this.combo.reduce((a, t) => a + t.pts, 0); return Math.round(sum * Math.min(Math.max(n, 1), 8)); }
   bankCombo() {
-    const real = this.combo.filter(t => !t.silent); if (!real.length) { this.combo = []; this.comboPending = 0; return; }
+    const real = this.combo.filter(t => !t.silent); if (!real.length || this.scoreLocked) { this.combo = []; this.comboPending = 0; return; }
     let total = this.comboValue();
     // spot bonus: any trick done at a named spot, or landing inside a spot
     let here = this.spotAt(this.pos.x, this.pos.z);
     for (const t of this.combo) { const s2 = this.spotAt(t.x, t.z); if (s2 && (!here || s2.bonus > here.bonus)) here = s2; }
     let spot = null; if (here) { spot = here; total += here.bonus; if (!this.spotsHit.has(here.name)) { this.spotsHit.add(here.name); this.emit('spotFirst', { name: here.name, bonus: here.bonus }); } }
+    // LAST CALL: main.js doubles every bank in the final seconds of a run
+    const raw = total, mult = this.bankMult || 1; total = Math.round(total * mult);
     this.score += total; this.session.bestCombo = Math.max(this.session.bestCombo, total);
     this.addFlow(0.10 * Math.min(Math.min(Math.max(real.length, 1), 8) / 8, 1));
     this.addSpecial(total / 2500);
     if (this.score > this.best) { this.best = this.score; storeSet('css-best', String(this.best)); }
-    this.emit('bank', { total, n: real.length, spot: spot ? spot.name : null, tricks: real.map(t => t.name) });
+    this.emit('bank', { total, raw, mult, n: real.length, spot: spot ? spot.name : null, tricks: real.map(t => t.name) });
     this.combo = []; this.comboPending = 0;
   }
   // Straight-to-the-bank points that never belonged to a combo (the B-T-O-W-N bonus).
   award(pts) {
+    if (this.scoreLocked) return;                    // after the buzzer nothing counts
     this.score += Math.round(pts);
     if (this.score > this.best) { this.best = this.score; storeSet('css-best', String(this.best)); }
   }
@@ -650,7 +669,7 @@ export class Skater {
   // Zero the score/session for a fresh 2-minute run. `best` (the all-time free-skate best)
   // deliberately survives — it is a lifetime figure, not a per-run one.
   resetScore() {
-    this.score = 0; this.combo = []; this.comboPending = 0; this.flow = 0; this._flowFull = false; this.special = 0; this.used.clear();
+    this.scoreLocked = false; this.score = 0; this.combo = []; this.comboPending = 0; this.flow = 0; this._flowFull = false; this.special = 0; this.used.clear();
     this.session = { tricks: 0, bails: 0, bestCombo: 0, grindTime: 0, topSpeed: 0, dist: 0, bestWreck: 0, wrecks: 0, gaps: 0 };
   }
 

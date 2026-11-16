@@ -1,7 +1,10 @@
 // Unified input: keyboard + touch. Produces one `input` object read by skate.js every frame.
 //   steer: -1..1 (left positive? NO: left = -1, right = +1), throttle: -1..1 (forward push / brake)
 //   ollie (held), olliePressed/ollieReleased (edge), flipA (kickflip), flipB (heelflip), shove, grab (hold = manual/grind lock)
-// Touch: left half = virtual stick; right side = buttons (OLLIE big, FLIP, SHOVE). Stick up = push.
+// Touch (2026-11-16: two buttons): left half = virtual stick, stick up = push. OLLIE: hold to
+// charge, let go to pop. TRICK: tap = kickflip (stick picks Hardflip / Varial Kickflip; on the
+// ground it pops for you), double-tap = 360 Flip (or The Maple Leaf with the special meter
+// full), hold = grab for as long as it's held (hold it through a landing to manual).
 // Flick pad (opt-in on touch, always on for a gamepad right stick): SKATE-style flick
 // gestures produce the same ollie/flipA/flipB/shove edges the buttons do — skate.js
 // cannot tell the difference, which is the whole point.
@@ -14,7 +17,8 @@ export class Input {
     this.ollie = false; this.olliePressed = false; this.ollieReleased = false;
     this.flipA = false; this.flipB = false; this.shove = false; this.grab = false;
     this.pause = false; this.reset = false; this.cam = false; this.map = false; this.any = false;
-    this._edges = { flipA: false, flipB: false, shove: false, reset: false, cam: false, map: false, pause: false };
+    this._edges = { flipA: false, flipB: false, shove: false, dbl: false, reset: false, cam: false, map: false, pause: false };
+    this.dbl = false; this._trick = { held: false, downAt: 0, tapAt: -1e9, dbl: false };
     this.keys = new Set();
     this.touchEnabled = isTouch();
     this.stick = { active: false, id: null, ox: 0, oy: 0, x: 0, y: 0 };
@@ -96,8 +100,8 @@ export class Input {
 
     for (const [name, el] of Object.entries(buttons)) {
       const ids = new Set(); this._btnIds.set(name, ids);
-      const pressNow = () => { this.any = true; el.classList.add('down'); this.buttons.set(name, true); if (name === 'ollie') this._ollieDown(); else if (name in this._edges) this._edges[name] = true; };
-      const releaseNow = () => { el.classList.remove('down'); this.buttons.set(name, false); if (name === 'ollie') this._ollieUp(); };
+      const pressNow = () => { this.any = true; el.classList.add('down'); this.buttons.set(name, true); if (name === 'ollie') this._ollieDown(); else if (name === 'trick') this._trickDown(); else if (name in this._edges) this._edges[name] = true; };
+      const releaseNow = () => { el.classList.remove('down'); this.buttons.set(name, false); if (name === 'ollie') this._ollieUp(); else if (name === 'trick') this._trickUp(); };
       el.addEventListener('touchstart', (e) => { e.preventDefault(); const was = ids.size; for (const t of e.changedTouches) ids.add(t.identifier); if (!was && ids.size) pressNow(); }, { passive: false });
       const tend = (e) => { e.preventDefault(); for (const t of e.changedTouches) ids.delete(t.identifier); if (!ids.size) releaseNow(); };
       el.addEventListener('touchend', tend, { passive: false }); el.addEventListener('touchcancel', tend, { passive: false });
@@ -109,6 +113,18 @@ export class Input {
     window.addEventListener('touchend', (e) => { if (e.touches.length === 0 && !this.stick.active) { /* all fingers up: safety release */ for (const r of this._releasers) r(); } }, { passive: true });
   }
   _btnIds = new Map(); _releasers = [];
+  // TRICK: a second press within 0.25 s of a tap is a double-tap (fires at once, no wait);
+  // a press let go inside 0.18 s is a tap (kickflip); held longer it is a grab (see poll()).
+  _trickDown() {
+    const T = this._trick, now = performance.now();
+    T.held = true; T.downAt = now; T.dbl = now - T.tapAt < 250;
+    if (T.dbl) { this._edges.dbl = true; T.tapAt = -1e9; }
+  }
+  _trickUp() {
+    const T = this._trick, now = performance.now();
+    if (T.held && !T.dbl && now - T.downAt < 180) { this._edges.flipA = true; T.tapAt = now; }
+    T.held = false; T.dbl = false;
+  }
 
   // Flick pad zone (touch). Origin = where the finger lands, same as the move stick; the
   // recognizer sees offsets normalized by R so its thresholds are device-independent.
@@ -165,6 +181,7 @@ export class Input {
     this.stick.active = false; this.stick.id = null; this.stick.x = 0; this.stick.y = 0;
     this.pad.active = false; this.pad.id = null; this.pad.x = 0; this.pad.y = 0; this.pad.multi = 0; this.flick.reset();
     this.steer = 0; this.throttle = 0; this.grab = false; this._steerBias = 0; this.ollieCancelled = false;
+    this._trick.held = false; this._trick.dbl = false; this.dbl = false;
   }
 
   // Called once per frame BEFORE physics; clears edges AFTER physics via endFrame()
@@ -189,8 +206,9 @@ export class Input {
       this._gpPausePrev = pauseNow;
     } else this._gpGrab = false;
     this.steer = clamp(steer + this._steerBias, -1, 1); this.throttle = clamp(thr, -1, 1);
-    this.grab = k.has('ShiftLeft') || k.has('ShiftRight') || k.has('KeyE') || !!this.buttons.get('grab') || this._gpGrab;
-    this.flipA = this._edges.flipA; this.flipB = this._edges.flipB; this.shove = this._edges.shove;
+    const trickHold = this._trick.held && performance.now() - this._trick.downAt >= 180;
+    this.grab = k.has('ShiftLeft') || k.has('ShiftRight') || k.has('KeyE') || !!this.buttons.get('grab') || this._gpGrab || trickHold;
+    this.flipA = this._edges.flipA; this.flipB = this._edges.flipB; this.shove = this._edges.shove; this.dbl = this._edges.dbl;
     this.reset = this._edges.reset; this.cam = this._edges.cam; this.map = this._edges.map; this.pause = this._edges.pause;
   }
   endFrame() { for (const key in this._edges) this._edges[key] = false; this.olliePressed = false; this.ollieReleased = false; this.ollieCancelled = false; this._steerBias = 0; this.any = false; }

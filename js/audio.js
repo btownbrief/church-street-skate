@@ -37,7 +37,17 @@ export class Audio {
       case 'backflip': this._blip(320, 0.3, 'sine', 0.1, -170); break;
       case 'push': this._thud(0.12, 0.18, 500); break;
       case 'bail': this._thud(0.8, 0.35, 500); this._blip(120, 0.3, 'sawtooth', 0.12, -80); break;
-      case 'bank': this._blip(660, 0.08, 'square', 0.08); setTimeout(() => this._blip(880, 0.1, 'square', 0.08), 70); if (ev.n >= 3) setTimeout(() => this._blip(1320, 0.16, 'square', 0.08), 140); break;
+      case 'bank': {
+        // the bank chime climbs with the combo length: a 1-trick bank is a blip, an 8-trick one sings
+        const up = Math.pow(2, Math.min(ev.n || 1, 8) / 12 * 2);
+        this._blip(660 * up, 0.08, 'square', 0.08); setTimeout(() => this._blip(880 * up, 0.1, 'square', 0.08), 70);
+        if (ev.n >= 3) setTimeout(() => this._blip(1320 * up, 0.16, 'square', 0.08), 140);
+        if (ev.total >= 5000) setTimeout(() => this._blip(1760 * up, 0.24, 'triangle', 0.09), 220);
+        break;
+      }
+      case 'goal': [0, 80, 160].forEach((d, i) => setTimeout(() => this._blip(784 * Math.pow(2, i * 4 / 12), 0.12, 'square', 0.07), d)); break;
+      case 'lastcall': this._blip(440, 0.18, 'sawtooth', 0.08); setTimeout(() => this._blip(440, 0.18, 'sawtooth', 0.08), 220); break;
+      case 'letter': this._blip(988, 0.08, 'triangle', 0.12); setTimeout(() => this._blip(1319, 0.14, 'triangle', 0.12), 70); break;
       case 'trick': this._blip(520 + Math.min(ev.combo, 8) * 60, 0.05, 'square', 0.05); break;
       case 'spotFirst': [0, 90, 180, 270].forEach((d, i) => setTimeout(() => this._blip(523 * Math.pow(2, i / 12 * 4), 0.12, 'triangle', 0.12), d)); break;
       case 'grindStart': this._thud(0.4, 0.06, 2500); break;
@@ -46,6 +56,7 @@ export class Audio {
       case 'honk': this._blip(440, 0.35, 'sawtooth', 0.12); this._blip(554, 0.35, 'sawtooth', 0.1); break;
     }
   }
+  tick(k = 0) { this._blip(900 + k * 500, 0.03, 'square', 0.04); }
   _bell(n = 1) {
     if (!this.ctx) return; const c = this.ctx;
     for (let i = 0; i < n; i++) setTimeout(() => {

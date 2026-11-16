@@ -158,6 +158,7 @@ export function installDev(api) {
 
   // analog input override for tests: __hold({ steer: 0.5, throttle: 1 }) until __hold(null)
   window.__hold = (o) => api.setAutopilot(o ? (inp) => { if ('steer' in o) inp.steer = o.steer; if ('throttle' in o) inp.throttle = o.throttle; if ('grab' in o) inp.grab = o.grab; } : null);
+  window.__freshen = () => skater.used.clear();   // forget trick staleness (FRESH again)
   window.__recOn = () => { window.__rec = []; api.setTap((ev) => { window.__rec.push(Object.assign({}, ev)); }); };
   window.__recOff = () => { api.setTap(null); window.__rec = []; };
   window.__rec = [];

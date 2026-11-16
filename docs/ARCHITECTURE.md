@@ -44,6 +44,8 @@ playable frame rate on a mid-range phone.
 | `js/letters.js` | builder E2 | the five B-T-O-W-N collectables on one of four routes, chosen by ISO-week seed. Builds a small mesh group + a `ctx.updaters` entry that rotates them and emits `letter`/`letters` onto the skater |
 | `js/leaderboard.js` | lead | the Btown fleet's **canonical** monthly-leaderboard client, copied byte-identical from `maple-scramble` with only the `GAME` slug changed. Do not edit it — fix it in the fleet and re-copy |
 | `js/challenges.js` | lead | thirteen Burlington challenges, ticked off from `skater.events` + a per-frame tracker, persisted in `localStorage` |
+| `js/daily.js` | lead | TODAY'S LINE: the five lines (start + letters), the goal pool and the day's three goals (seeded by date, `?day=N` pins one), `GoalTracker`, and the `css-daily` / `css-streak` / `css-run-best` saves. Pure — no DOM, no three.js |
+| `js/seethrough.js` | lead | dithered see-through hole for decoration between the camera and the skater (`seeThrough(material)` + `updateHole()` once a frame) |
 | `js/devhooks.js` | lead | the `window.__*` headless-playtest hooks (`__sim` / `__tp` / `__drive` / `__air` / `__near` / `__pick` / `__ground` / `__meshes` / `__look` / `__topdown` / `__dbg`). Kept out of `main.js`; nothing runs unless a test calls it |
 
 Builders must not touch files they don't own. Shared constants in `js/config.js`.

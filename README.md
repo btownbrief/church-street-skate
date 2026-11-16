@@ -1,6 +1,6 @@
 # Church Street Skate
 
-A small open-world 3D skateboarding game set in an accurate downtown Burlington,
+A 3D skateboarding score-attack game: a small open-world set in an accurate downtown Burlington,
 Vermont — the Church Street Marketplace, City Hall Park, and the hill streets that drop
 west toward Lake Champlain. Plain static site: open `index.html` (or any static host) and
 skate. Keyboard on desktop, touch stick + buttons on phones.
@@ -25,15 +25,30 @@ skate. Keyboard on desktop, touch stick + buttons on phones.
 
 ## What there is to do
 
-Free skate — no timer, no fail state. Score is THPS-style: trick base × combo length,
-banked when you settle, with named **spot bonuses** on real Burlington features (City Hall
-steps and hubba, the Firehouse piers, Big Joe's slab, the Insomnia boulders, the ski-lift
-bench at the top of the mall, the Pomerleau fountain, the Church terrace steps, the
-Fletcher Free steps, the globe pavers, the construction barriers). Eight **challenges**
-sit on the pause screen and persist between sessions — grind the City Hall handrail, land
-a 360 flip on the bricks, bomb College St from Church to Battery without bailing, manual
-40 m down the granite line, ollie onto a parked car, grind Big Joe's slab, bank a
-10,000-point combo, find every spot.
+A 3D skateboarding score attack. **Today's Line** is the main mode: one tap from the title,
+90 seconds on one of five lines through town (Mall Bomb, College Hill, City Hall, The
+Waterfront, Main Street) — a different one each day. Five B-T-O-W-N letters mark the line
+(a light column stands on the next one); each is +500 and +5 s. Three goals a day (from a pool
+of twelve, one easy, one medium, one hard) are +1,500 each and +5,000 for all three. The last
+20 seconds are **Last Call**: every bank counts double. Today's best, the all-time run best
+and a day streak are kept; the results card names tomorrow's line. The score goes to the
+monthly leaderboard (`church-street-skate`).
+
+Score is THPS-style: trick base × combo length, banked when you settle. Repeating a trick
+pays less each time (first use ×1.5 FRESH, then ×1, ×0.7 … ×0.1), so variety is the way up.
+Named **spot bonuses** sit on real Burlington features (City Hall steps and hubba, the
+Firehouse piers, Big Joe's slab, the Insomnia boulders, the ski-lift bench, the Pomerleau
+fountain, the Church terrace steps, the Fletcher Free steps, the globe pavers, the
+construction barriers) and sixteen **named gaps** cross real geography.
+
+**Free skate** (a small link on the title) is the whole downtown with no clock: the weekly
+B-T-O-W-N route, thirteen **challenges** and the spot / gap collection, all in the pause menu.
+
+Controls — phone: drag on the left to steer and push; **OLLIE** hold and let go; **TRICK**
+tap = kickflip (the stick picks Hardflip / Varial Kickflip), double-tap = 360 Flip (The Maple
+Leaf with the gold meter full), hold = grab, keep holding through a landing to manual. Land on
+ledges and rails to grind. Keyboard: W/S push and brake, A/D steer and spin, Space ollie,
+J/K/L kickflip / heelflip / shove-it, Shift grab and manual, P pause.
 
 ## Code map
 

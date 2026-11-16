@@ -1,139 +1,153 @@
-// DOM HUD: score, combo ticker, trick popups, spot callouts, balance meter, location label, minimap.
+// DOM HUD. Deliberately small (2026-11-16 "HUD diet"): score + the gold special bar, the run
+// clock with the B-T-O-W-N dots and today's three goal chips, pause. Everything else is
+// transient — the combo line while you're in a combo, one callout at a time, bank popups that
+// scale with the bank, a location name that shows for 1.5 s when it changes (free skate).
 import { clamp } from './util.js';
 import { CFG } from './config.js';
 
+const CALLOUT_T = 1.6;            // seconds each queued callout stays up
+
 export class Hud {
   constructor(root, worldInfo) {
-    this.root = root; this.info = worldInfo; // { roads, buildings, play, churchStreet } for minimap + location names
+    this.root = root; this.info = worldInfo; // { roads, buildings, play } for the minimap
     root.innerHTML = `
       <div id="hud-top">
-        <div id="hud-score"><div class="lbl">SCORE</div><div id="score-val">0</div><div id="best-val">best 0</div>
-          <div id="meters">
-            <div class="meter" id="m-special"><i></i></div>
-            <div class="meter" id="m-flow"><i></i></div>
-          </div>
-          <div id="letters"></div>
+        <div id="hud-score"><div id="score-val">0</div><div id="best-val"></div>
+          <div class="meter" id="m-special"><i></i></div>
         </div>
-        <div id="hud-loc"><span id="loc-name">Church Street</span></div>
-        <div id="timer"></div>
+        <div id="hud-mid"><div id="timer"></div><div id="letters"></div><div id="goals"></div></div>
         <div id="hud-right"><button id="btn-map" class="pill" aria-label="Map">MAP</button><button id="btn-pause" class="pill" aria-label="Pause">II</button></div>
       </div>
+      <div id="hud-loc"><span id="loc-name"></span></div>
       <div id="combo"><div id="combo-tricks"></div><div id="combo-total"></div></div>
       <div id="balance"><div id="balance-knob"></div></div>
       <div id="charge"><i></i><b></b></div>
       <div id="popups"></div>
-      <div id="tape"></div>
       <div id="callout"></div>
       <canvas id="minimap" width="220" height="220"></canvas>
       <div id="speed"></div>`;
-    this.el = { score: root.querySelector('#score-val'), best: root.querySelector('#best-val'), loc: root.querySelector('#loc-name'), combo: root.querySelector('#combo'), comboTricks: root.querySelector('#combo-tricks'), comboTotal: root.querySelector('#combo-total'), balance: root.querySelector('#balance'), knob: root.querySelector('#balance-knob'), popups: root.querySelector('#popups'), callout: root.querySelector('#callout'), map: root.querySelector('#minimap'), speed: root.querySelector('#speed'), btnMap: root.querySelector('#btn-map'), btnPause: root.querySelector('#btn-pause'),
-      special: root.querySelector('#m-special > i'), flow: root.querySelector('#m-flow > i'), mSpecial: root.querySelector('#m-special'), letters: root.querySelector('#letters'), timer: root.querySelector('#timer'),
-      charge: root.querySelector('#charge'), chargeFill: root.querySelector('#charge > i'), chargeBonus: root.querySelector('#charge > b'),
-      tape: root.querySelector('#tape') };
-    this.shownScore = 0; this.mapOn = true; this.comboFlash = 0; this._lastLoc = ''; this._locT = 0; this._calloutT = 0;
-    this._special = -1; this._flow = -1; this._lettersKey = ''; this._timerTxt = '';
-    this.combo = [];                      // reused scratch for the combo ticker (no per-frame alloc)
+    const q = (s) => root.querySelector(s);
+    this.el = { score: q('#score-val'), best: q('#best-val'), loc: q('#loc-name'), locBox: q('#hud-loc'), combo: q('#combo'), comboTricks: q('#combo-tricks'), comboTotal: q('#combo-total'), balance: q('#balance'), knob: q('#balance-knob'), popups: q('#popups'), callout: q('#callout'), map: q('#minimap'), speed: q('#speed'), btnMap: q('#btn-map'), btnPause: q('#btn-pause'),
+      special: q('#m-special > i'), mSpecial: q('#m-special'), letters: q('#letters'), timer: q('#timer'), goals: q('#goals'),
+      charge: q('#charge'), chargeFill: q('#charge > i'), chargeBonus: q('#charge > b') };
+    this.shownScore = 0; this.mapOn = true; this.comboFlash = 0; this._lastLoc = ''; this._locT = 0;
+    this._special = -1; this._lettersKey = ''; this._timerTxt = ''; this.showBest = true;
+    this.queue = []; this._calloutT = 0;
     this._best = -1; this._mph = -1; this._comboHtml = ''; this._comboTotalTxt = '';
     this.mapCtx = this.el.map.getContext('2d');
     this.el.btnMap.addEventListener('click', () => this.toggleMap());
-    this.mapScale = 1; // px per metre (set per frame)
   }
-  toggleMap() { this.mapOn = !this.mapOn; this.el.map.style.display = this.mapOn ? 'block' : 'none'; }
+  toggleMap(on) { this.mapOn = on === undefined ? !this.mapOn : on; this.el.map.style.display = this.mapOn ? '' : 'none'; return this.mapOn; }
 
   popup(text, cls = '', x = 50, y = 38) {
     const d = document.createElement('div'); d.className = 'pop ' + cls; d.textContent = text; d.style.left = x + '%'; d.style.top = y + '%';
     this.el.popups.appendChild(d); setTimeout(() => d.remove(), 2600);
-    while (this.el.popups.children.length > 6) this.el.popups.firstChild.remove();
+    while (this.el.popups.children.length > 4) this.el.popups.firstChild.remove();
   }
-  // TRICK TAPE: a running history in the corner. Every trick lands a row that stays long
-  // enough to actually read (the combo ticker banks and vanishes in under a second).
-  tape(text, cls = '') {
-    const d = document.createElement('div'); d.className = 'row ' + cls; d.textContent = text;
-    this.el.tape.prepend(d);
-    while (this.el.tape.children.length > 8) this.el.tape.lastChild.remove();
-    setTimeout(() => { d.classList.add('out'); setTimeout(() => d.remove(), 600); }, 8000);
+  // One callout at a time, each up for 1.6 s; the rest wait their turn. `cls` tints it.
+  callout(title, sub, cls = '') {
+    if (this.queue.length >= 3) this.queue.shift();         // never fall seconds behind the action
+    this.queue.push({ title, sub, cls });
+    if (this._calloutT <= 0) this._nextCallout();
   }
-  callout(title, sub) { this.el.callout.innerHTML = `<div class="ct">${title}</div>${sub ? `<div class="cs">${sub}</div>` : ''}`; this.el.callout.classList.add('on'); this._calloutT = 4.2; }
+  _nextCallout() {
+    const c = this.queue.shift(); const el = this.el.callout;
+    if (!c) { el.classList.remove('on'); this._calloutT = 0; return; }
+    el.className = 'on ' + c.cls;
+    el.innerHTML = `<div class="ct"></div>${c.sub ? '<div class="cs"></div>' : ''}`;
+    el.querySelector('.ct').textContent = c.title; if (c.sub) el.querySelector('.cs').textContent = c.sub;
+    this._calloutT = CALLOUT_T;
+  }
+  clearCallouts() { this.queue.length = 0; this._calloutT = 0; this.el.callout.className = ''; this.el.popups.innerHTML = ''; }
 
   handle(ev, sk) {
     switch (ev.type) {
-      case 'trick': this.comboFlash = 1; this.tape(`${ev.name}  +${ev.pts.toLocaleString()}`); break;
-      case 'bank': this.popup(`+${ev.total.toLocaleString()}`, 'bank', 50, 30); if (ev.spot) this.callout(ev.spot, `spot bonus`); break;
-      case 'bail': if (ev.lost > 0) this.popup(`BAIL  −${ev.lost.toLocaleString()}`, 'bail', 50, 34); else this.popup('BAIL', 'bail', 50, 34); this.tape('bail', 'bail'); break;
+      case 'trick': this.comboFlash = 1; break;
+      case 'bank': {
+        // the payoff scales with the bank: small banks are small, big ones are BIG
+        const cls = ev.total >= 5000 ? 'bank mega' : ev.total >= 2000 ? 'bank big' : ev.total >= 500 ? 'bank' : 'bank small';
+        this.popup(`+${ev.total.toLocaleString()}${ev.mult > 1 ? '  ×' + ev.mult : ''}`, cls, 50, 30);
+        if (ev.spot) this.callout(ev.spot, 'spot bonus');
+        break;
+      }
+      case 'bail': this.popup(ev.lost > 0 ? `BAIL  −${ev.lost.toLocaleString()}` : 'BAIL', 'bail', 50, 34); break;
       case 'spotFirst': this.callout(`NEW SPOT: ${ev.name}`, `+${ev.bonus} · ${sk.spotsHit.size}/${sk.spots.length} Burlington spots`); break;
       case 'land': if (ev.sketchy) this.popup('sketchy', 'sk', 50, 44); break;
-      case 'stomp': this.popup('STOMPED!', 'stomp', 50, 34); break;
-      case 'gap': this.callout(ev.name.toUpperCase(), ev.first ? `NEW GAP · +${ev.pts}` : `+${ev.pts}`); this.tape(`${ev.name}  +${ev.pts.toLocaleString()}`, 'gap'); break;
-      // Wrecks are a separate flavour stat, so the toast is explicit that it scores nothing.
-      case 'wreck': this.popup(`${ev.name.toUpperCase()}! +0 · wreck score ${ev.score.toLocaleString()}`, 'wreck', 50, 40); break;
+      case 'stomp': this.popup('STOMPED!', 'stomp', 50, 36); break;
+      case 'gap': this.callout(ev.name.toUpperCase(), ev.first ? `NEW GAP · +${ev.pts}` : `+${ev.pts}`, 'gap'); break;
       case 'revert': this.popup('revert', 'sk', 50, 46); break;
-      case 'maple': this.callout('THE MAPLE LEAF', 'signature trick'); break;
-      case 'letter': this.callout(`${ev.ch}`, `B-T-O-W-N · ${ev.n}/${ev.total}`); break;
-      case 'letters': this.callout('BTOWN!', `all five letters · +${ev.pts.toLocaleString()}`); break;
-      case 'flowFull': this.popup('FLOW', 'flow', 50, 50); break;
+      case 'maple': this.callout('THE MAPLE LEAF', 'signature trick', 'gold'); break;
+      case 'letter': this.callout(ev.run ? `${ev.ch}   +5s` : ev.ch, ev.run ? `B-T-O-W-N ${ev.n}/${ev.total} · +500` : `B-T-O-W-N · ${ev.n}/${ev.total}`, 'letter'); break;
+      case 'letters': this.callout('BTOWN!', `all five letters · +${ev.pts.toLocaleString()}`, 'gold'); break;
     }
   }
 
-  // 2-MINUTE RUN clock. main.js owns the timer; the HUD only renders what it is handed.
-  setTimer(sec) {
+  // TODAY'S LINE clock. main.js owns the timer; the HUD only renders what it is handed.
+  setTimer(sec, lastCall = false) {
     if (sec == null) { if (this._timerTxt !== '') { this._timerTxt = ''; this.el.timer.textContent = ''; this.el.timer.classList.remove('on', 'low'); } return; }
     const s = Math.max(0, Math.ceil(sec));
     const txt = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
     if (txt !== this._timerTxt) { this._timerTxt = txt; this.el.timer.textContent = txt; }
     this.el.timer.classList.add('on');
-    this.el.timer.classList.toggle('low', sec <= 10);
+    this.el.timer.classList.toggle('low', lastCall);
   }
+  bumpTimer() { const t = this.el.timer; t.classList.remove('plus'); void t.offsetWidth; t.classList.add('plus'); }
+  // three chips under the clock; they turn green as the run clears them
+  setGoals(goals, done) {
+    if (!goals) { this.el.goals.innerHTML = ''; return; }
+    this.el.goals.innerHTML = goals.map((g, i) => `<span class="chip${done && done[i] ? ' done' : ''}">${g.chip}</span>`).join('');
+  }
+  markGoal(i) { const c = this.el.goals.children[i]; if (c) { c.classList.add('done', 'pop'); } }
 
   update(dt, sk, loc) {
     // score counts up
     const target = sk.score; if (this.shownScore !== target) { this.shownScore += Math.ceil((target - this.shownScore) * Math.min(1, dt * 8)); if (Math.abs(target - this.shownScore) < 2) this.shownScore = target; this.el.score.textContent = this.shownScore.toLocaleString(); }
-    if (this._best !== sk.best) { this._best = sk.best; this.el.best.textContent = 'best ' + sk.best.toLocaleString(); }
-    // combo — counted in place, no per-frame array allocation
+    const bestTxt = this.showBest ? 'best ' + sk.best.toLocaleString() : '';
+    if (this._best !== bestTxt) { this._best = bestTxt; this.el.best.textContent = bestTxt; }
+    // combo — counted in place
     let nReal = 0, sum = 0;
     for (const t of sk.combo) { sum += t.pts; if (!t.silent) nReal++; }
-    // live (in-progress) trick: grind or manual accumulating points
     let liveName = null, livePts = 0;
     if (sk.state === 'grind' && sk.grind) { liveName = sk.grind.type + (sk.grind.edge.name ? ' · ' + sk.grind.edge.name : ''); livePts = 80 + 90 * sk.grind.time; }
     else if (sk.state === 'manual' && sk.manual) { liveName = sk.manual.nose ? 'Nose Manual' : 'Manual'; livePts = 60 + 70 * sk.manual.time; }
     else if (sk.state === 'air' && Math.abs(sk.spinAccum) > 1.9) {
-      // live spin readout: you can watch the rotation build toward the next 180
       const deg = Math.floor(Math.abs(sk.spinAccum) / Math.PI * 180 / 10) * 10;
       liveName = (sk.spinAccum > 0 ? 'FS ' : 'BS ') + deg + '°'; livePts = 0;
     }
     if (nReal || liveName) {
-      this.combo.length = 0;
-      for (const t of sk.combo) if (!t.silent) this.combo.push(t.name);
-      if (this.combo.length > 5) this.combo.splice(0, this.combo.length - 5);
-      if (liveName) this.combo.push(`<span class="live">${liveName}</span>`);
-      const names = this.combo.join(' <span class="plus">+</span> ');
+      // FRESH tricks (first time this run) glow green and pay ×1.5; worn-out ones fade
+      const parts = [];
+      for (const t of sk.combo) if (!t.silent) parts.push(t);
+      const shown = parts.slice(-5);
+      let html = shown.map(t => `<span class="${t.fresh ? 'fresh' : t.stale ? 'stale' : ''}">${esc(t.name)}${t.fresh ? '<sup>FRESH</sup>' : ''}</span>`).join(' <span class="plus">+</span> ');
+      if (liveName) html += (html ? ' <span class="plus">+</span> ' : '') + `<span class="live">${esc(liveName)}</span>`;
       this.el.combo.classList.add('on');
-      if (this._comboHtml !== names) { this.el.comboTricks.innerHTML = names; this._comboHtml = names; }
+      if (this._comboHtml !== html) { this.el.comboTricks.innerHTML = html; this._comboHtml = html; }
       const total = sum + Math.round(livePts);
       const n = nReal + (liveName ? 1 : 0);
       const txt = `${total.toLocaleString()} × ${Math.min(n, 8)}`;
       if (this._comboTotalTxt !== txt) { this._comboTotalTxt = txt; this.el.comboTotal.textContent = txt; }
-      this.comboFlash = Math.max(0, this.comboFlash - dt * 3); this.el.comboTotal.style.transform = `scale(${1 + this.comboFlash * 0.25})`;
+      this.comboFlash = Math.max(0, this.comboFlash - dt * 3); this.el.comboTotal.style.transform = `scale(${1 + this.comboFlash * 0.25 + Math.min(n, 8) * 0.03})`;
     } else if (this._comboHtml !== '') { this.el.combo.classList.remove('on'); this._comboHtml = ''; this._comboTotalTxt = ''; }
     // balance meter
     if (sk.state === 'grind' || sk.state === 'manual') { this.el.balance.classList.add('on'); this.el.knob.style.left = (50 + clamp(sk.balance, -1, 1) * 46) + '%'; this.el.knob.style.background = Math.abs(sk.balance) > 0.7 ? '#ff4d3d' : '#ffd84d'; }
     else this.el.balance.classList.remove('on');
-    // location
-    if (loc && loc !== this._lastLoc) { this._lastLoc = loc; this.el.loc.textContent = loc; this.el.loc.parentElement.classList.add('flash'); setTimeout(() => this.el.loc.parentElement.classList.remove('flash'), 600); }
-    if (this._calloutT > 0) { this._calloutT -= dt; if (this._calloutT <= 0) this.el.callout.classList.remove('on'); }
-    // special + flow meters (written only when they actually move, like every other field)
-    const sp2 = Math.round(sk.special * 100), fl = Math.round(sk.flow * 100);
+    // location: a name shows for 1.5 s when it changes, then gets out of the way
+    if (loc && loc !== this._lastLoc) { this._lastLoc = loc; this.el.loc.textContent = loc; this.el.locBox.classList.add('on'); this._locT = 1.5; }
+    if (this._locT > 0) { this._locT -= dt; if (this._locT <= 0) this.el.locBox.classList.remove('on'); }
+    if (this._calloutT > 0) { this._calloutT -= dt; if (this._calloutT <= 0) this._nextCallout(); }
+    // special meter
+    const sp2 = Math.round(sk.special * 100);
     if (this._special !== sp2) { this._special = sp2; this.el.special.style.width = sp2 + '%'; this.el.mSpecial.classList.toggle('full', sk.special >= 1); }
-    if (this._flow !== fl) { this._flow = fl; this.el.flow.style.width = fl + '%'; }
-    // B-T-O-W-N tray
+    // B-T-O-W-N dots
     if (this.letters) {
-      const key = [...this.letters.got].sort().join('');
+      const key = this.letters.route + [...this.letters.got].sort().join('');
       if (key !== this._lettersKey) {
         this._lettersKey = key;
         this.el.letters.innerHTML = this.letters.all.map(c => `<b class="${this.letters.got.has(c) ? 'got' : ''}">${c}</b>`).join('');
       }
     }
-    // OLLIE CHARGE bar: yellow = how loaded the pop is, green = the extra the current
-    // speed adds on top (grows as you gather speed mid-charge — tuck downhill and watch it)
+    // OLLIE CHARGE bar: yellow = how loaded the pop is, green = the extra the current speed adds
     if (sk.charging) {
       this.el.charge.classList.add('on');
       const frac = clamp(sk.charge / CFG.ollieCharge, 0, 1);
@@ -145,7 +159,7 @@ export class Hud {
     } else this.el.charge.classList.remove('on');
     const mph = Math.round(sk.speed * 2.237);
     if (this._mph !== mph) { this._mph = mph; this.el.speed.textContent = mph + ' mph'; }
-    if (this.mapOn) this.drawMap(sk);
+    if (this.mapOn && this.el.map.offsetParent !== null) this.drawMap(sk);
   }
 
   _prerender() {
@@ -169,12 +183,12 @@ export class Hud {
     g.save(); g.beginPath(); g.arc(W / 2, H / 2, W / 2 - 4, 0, Math.PI * 2); g.clip();
     const sx = sk.pos.x * s + this.mapOX - W / 2, sz = sk.pos.z * s + this.mapOZ - H / 2;
     g.drawImage(this.mapStatic, sx, sz, W, H, 0, 0, W, H);
-    // spots
     for (const sp of sk.spots) { const px = sp.x * s + this.mapOX - sx, pz = sp.z * s + this.mapOZ - sz; if (px < -5 || pz < -5 || px > W + 5 || pz > H + 5) continue; g.fillStyle = sk.spotsHit.has(sp.name) ? 'rgba(120,230,140,0.9)' : 'rgba(255,216,77,0.9)'; g.beginPath(); g.arc(px, pz, 3, 0, Math.PI * 2); g.fill(); }
     g.restore();
-    // skater arrow
     g.save(); g.translate(W / 2, H / 2); g.rotate(-sk.yaw); g.fillStyle = '#fff'; g.beginPath(); g.moveTo(0, -8); g.lineTo(6, 6); g.lineTo(0, 3); g.lineTo(-6, 6); g.closePath(); g.fill(); g.restore();
     g.strokeStyle = 'rgba(255,255,255,0.35)'; g.lineWidth = 2; g.beginPath(); g.arc(W / 2, H / 2, W / 2 - 3, 0, Math.PI * 2); g.stroke();
     g.fillStyle = 'rgba(255,255,255,0.7)'; g.font = 'bold 11px system-ui, sans-serif'; g.textAlign = 'center'; g.fillText('N', W / 2, 14);
   }
 }
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));

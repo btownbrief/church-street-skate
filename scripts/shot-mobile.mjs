@@ -21,16 +21,16 @@ await page.goto(process.env.URL || 'http://localhost:8765/index.html');
 await page.waitForFunction(() => !!window.__tp && !document.querySelector('#btn-play').disabled, null, { timeout: 180000 });
 console.log('viewport', JSON.stringify(page.viewportSize()));
 await page.screenshot({ path: out + '-0-title.png', timeout: 120000 });
-await page.tap('#btn-play');
+await page.tap('#btn-run');
 await page.waitForTimeout(700);
 
 // --- layout audit -----------------------------------------------------------
 const layout = await page.evaluate(() => {
   const R = (sel) => { const e = document.querySelector(sel); if (!e) return null; const r = e.getBoundingClientRect(); return { sel, x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height), vis: getComputedStyle(e).display !== 'none' }; };
-  const sels = ['#b-ollie', '#b-flip', '#b-shove', '#b-grab', '#stick-base', '#minimap', '#speed', '#hud-score', '#hud-loc', '#btn-map', '#btn-pause', '#hint'];
-  return { vw: innerWidth, vh: innerHeight, boxes: sels.map(R).filter(Boolean), touch: document.body.classList.contains('touch'), hint: document.body.classList.contains('show-hint') };
+  const sels = ['#b-ollie', '#b-trick', '#stick-base', '#minimap', '#speed', '#hud-score', '#timer', '#letters', '#goals', '#hud-loc', '#btn-map', '#btn-pause', '#coach'];
+  return { vw: innerWidth, vh: innerHeight, boxes: sels.map(R).filter(Boolean), touch: document.body.classList.contains('touch'), hint: document.querySelector('#coach').classList.contains('on') };
 });
-console.log('touch class:', layout.touch, '· first-play hint:', layout.hint);
+console.log('touch class:', layout.touch, '· first-play coach:', layout.hint);
 const { vw, vh } = layout;
 const problems = [];
 for (const b of layout.boxes) {
@@ -40,8 +40,13 @@ for (const b of layout.boxes) {
 const btns = layout.boxes.filter((b) => b.vis && (b.sel.startsWith('#b-') || b.sel === '#btn-map' || b.sel === '#btn-pause'));
 for (const b of btns) if (Math.min(b.w, b.h) < 40) problems.push(`${b.sel} smaller than a 40 px thumb target (${b.w}x${b.h})`);
 const over = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
-const hudBoxes = layout.boxes.filter((b) => b.vis && ['#minimap', '#speed', '#hud-score', '#hud-loc', '#hint'].includes(b.sel));
+const hudBoxes = layout.boxes.filter((b) => b.vis && b.w > 0 && ['#minimap', '#speed', '#hud-score', '#timer', '#letters', '#goals', '#hud-loc', '#coach'].includes(b.sel));
 for (const t of btns) for (const h of hudBoxes) if (over(t, h)) problems.push(`${t.sel} overlaps ${h.sel}`);
+// HUD boxes must not overlap each other either (2026-11-16 HUD diet); the goal row spans the
+// width as a flex row, so compare its chips rather than the row
+const chipBoxes = await page.evaluate(() => [...document.querySelectorAll('#goals .chip')].map((e, i) => { const r = e.getBoundingClientRect(); return { sel: '#goals .chip' + i, x: r.x, y: r.y, w: r.width, h: r.height }; }));
+const hudAll = hudBoxes.filter((b) => b.sel !== '#goals').concat(chipBoxes);
+for (let i = 0; i < hudAll.length; i++) for (let j = i + 1; j < hudAll.length; j++) if (over(hudAll[i], hudAll[j]) && !(hudAll[i].sel === '#timer' && hudAll[j].sel === '#letters')) problems.push(`${hudAll[i].sel} overlaps ${hudAll[j].sel}`);
 for (let i = 0; i < btns.length; i++) for (let j = i + 1; j < btns.length; j++) if (over(btns[i], btns[j])) problems.push(`${btns[i].sel} overlaps ${btns[j].sel}`);
 const stick = layout.boxes.find((b) => b.sel === '#stick-base');
 if (stick && stick.x + stick.w / 2 > vw / 2) problems.push('stick is not on the left half');
@@ -76,12 +81,12 @@ await page.waitForTimeout(500);
 const air = await page.evaluate(() => window.__dbg());
 console.log('OLLIE button → state', air.state);
 await page.waitForTimeout(900);
-const hintGone = await page.evaluate(() => !document.body.classList.contains('show-hint'));
-console.log('first-play hint cleared after the ollie:', hintGone);
+const coachStep = await page.evaluate(() => window.__T.state().coach);
+console.log('first-play coach step after pushing + an ollie:', coachStep);
 await page.screenshot({ path: out + '-2-ollie.png', timeout: 120000 });
 
 // flip + shove
-for (const sel of ['#b-flip', '#b-shove', '#b-grab']) {
+for (const sel of ['#b-trick', '#b-trick', '#b-ollie']) {
   const b = await box(sel);
   await page.touchscreen.tap(b.x + b.width / 2, b.y + b.height / 2);
   await page.waitForTimeout(180);

@@ -1,4 +1,4 @@
-// Boot, screens, main loop, quality tiers.
+// Boot, screens, main loop, quality tiers — and TODAY'S LINE, the daily timed run.
 import * as THREE from '../vendor/three.module.min.js';
 import { CFG } from './config.js';
 import { Input } from './input.js';
@@ -13,11 +13,15 @@ import { GapTracker } from './gaps.js';
 import { isMobile, isTouch, storeGet, storeSet } from './util.js';
 import { installDev } from './devhooks.js';
 import { updateHole } from './seethrough.js';
+import { today as getToday, loadDaily, saveRun, GoalTracker, GOAL_PTS, ALL_GOALS_PTS, LETTER_PTS, LETTER_SECS } from './daily.js';
 import { lbEnabled, getName, playerId, submitScore, renamePlayer, fetchTop, monthLabel } from './leaderboard.js';
 
 const $ = (s) => document.querySelector(s);
 const mobile = isMobile(); const touch = isTouch();
 if (touch) document.body.classList.add('touch');
+const buzz = (p) => { try { if (navigator.vibrate) navigator.vibrate(p); } catch { /* iOS: no haptics, no fuss */ } };
+const hintOf = (g) => (touch ? g.hint : g.key || g.hint);
+const ticker = (on) => { try { const t = window.BtownTicker; if (t) on ? t.show() : t.hide(); } catch { /* optional */ } };
 
 const canvas = $('#c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: !mobile, powerPreference: 'high-performance' });
@@ -34,22 +38,30 @@ scene.add(camera);
 const input = new Input();
 const audio = new Audio();
 let world, skater, mesh, follow, hud, chal, gaps, running = false, paused = false, last = performance.now(), fpsAcc = 0, fpsN = 0, lowFpsT = 0;
-let locTimer = 0, curLoc = '', freshT = 0;
-// 2-MINUTE RUN. main.js owns the whole thing: skate.js only ever sees a normal input
-// object, and never learns there is a clock.
-let mode = 'free', runLeft = 0, runOver = false, frozen = false;
+let locTimer = 0, curLoc = '', freshT = 0, hitPause = 0;
+// TODAY'S LINE. main.js owns the whole thing: skate.js only ever sees a normal input object
+// and a bank multiplier, and never learns there is a clock.
+let mode = 'free', runLeft = 0, runOver = false, frozen = false, clockOn = false, lastCall = false;
+let day = getToday(), goals = null, coach = null;
 let autopilot = null, evTap = null;   // headless-playtest hooks (js/devhooks.js)
 
-const how = touch
-  ? `<b>Left side</b>: drag to steer, push up to skate · <b>OLLIE</b> hold &amp; release for height · <b>FLIP</b>/<b>SHOVE</b> in the air (both = 360 flip) · steer in the air to spin · land on ledges &amp; rails to grind, steer to balance · <b>GRAB</b> in the air, hold it through the landing to manual · prefer flicking? Pause → <b>Tricks: flick pad</b> — pull back &amp; flick up to ollie, ↖ kickflip, ↗ heelflip, ←/→ shove-it, two fingers = signature`
-  : `<kbd>W/↑</kbd> push · <kbd>S/↓</kbd> brake · <kbd>A/D</kbd> steer (and spin in the air) · <kbd>Space</kbd> hold &amp; release to ollie · <kbd>J</kbd> kickflip · <kbd>K</kbd> heelflip · <kbd>L</kbd> shove-it (<kbd>J</kbd>+<kbd>L</kbd> = 360 flip) · <kbd>Shift</kbd> grab in the air, hold it through the landing to manual (with <kbd>S</kbd> = nose manual) · land on a ledge or rail to grind, steer to balance · <kbd>C</kbd> camera · <kbd>M</kbd> map · <kbd>R</kbd> respawn · <kbd>P</kbd> pause`;
-$('#how').innerHTML = how;
+// ---- title ------------------------------------------------------------------------------
+function paintTitle() {
+  day = getToday();
+  const d = loadDaily(day);
+  $('#run-label').textContent = "Today's Line";
+  $('#run-line').textContent = day.line.name;
+  const bits = [];
+  if (d.best > 0) bits.push(`today's best ${d.best.toLocaleString()}`);
+  if (d.streak > 1) bits.push(`${d.streak}-day streak`);
+  if (!bits.length) bits.push(day.line.blurb);
+  $('#title-meta').textContent = bits.join(' · ');
+}
 
 async function boot() {
-  $('#btn-play').disabled = true;
   try {
     world = await buildWorld({ scene, renderer, camera, quality });
-  } catch (e) { console.error(e); $('#loading').textContent = 'Something broke while building the city: ' + e.message; throw e; }
+  } catch (e) { console.error(e); $('#run-label').textContent = 'Something broke while building the city'; $('#run-line').textContent = e.message; throw e; }
   window.__world = world;
   const sp = world.spawn;
   skater = new Skater(world.collide, sp); skater.spots = world.spots;
@@ -59,11 +71,11 @@ async function boot() {
   follow = new FollowCamera(camera, world.collide); follow.reset(skater);
   hud = new Hud($('#hud'), world.info);
   hud.letters = world.letters || null;
+  hud.toggleMap(!touch && storeGet('css-map') !== '0');
   hud.el.btnPause.addEventListener('click', () => setPaused(true));
-  input.bindTouch({ stickZone: $('#stick-zone'), stickKnob: $('#stick-knob'), buttons: { ollie: $('#b-ollie'), flipA: $('#b-flip'), shove: $('#b-shove'), grab: $('#b-grab') } });
-  input.bindFlickPad({ zone: $('#flick-zone'), knob: $('#flick-knob') });
-  $('#loading').textContent = `Downtown loaded — ${world.stats}`;
-  $('#btn-play').disabled = false;
+  input.bindTouch({ stickZone: $('#stick-zone'), stickKnob: $('#stick-knob'), buttons: { ollie: $('#b-ollie'), trick: $('#b-trick') } });
+  paintTitle();
+  $('#btn-play').disabled = false; $('#btn-run').disabled = false;
   renderer.render(scene, camera);
   installDev({ world, skater, follow, camera, renderer, scene, input, gaps, step: stepGame,
     setAutopilot: (f) => { autopilot = f; }, setTap: (f) => { evTap = f; },
@@ -72,7 +84,8 @@ async function boot() {
   window.__T = {
     start: (m = 'run') => start(m),
     step: (ms = 16) => { const n = Math.max(1, Math.round(ms / 1000 * 60)); for (let i = 0; i < n; i++) if (running && !paused) stepGame(1 / 60, performance.now()); updateHole(camera, renderer, skater.pos, !window.__noHole); renderer.render(scene, camera); },
-    state: () => ({ mode, running, paused, runOver, runLeft: +runLeft.toFixed(2), score: skater.score, state: skater.state, speed: +skater.speed.toFixed(2),
+    state: () => ({ mode, running, paused, runOver, runLeft: +runLeft.toFixed(2), clockOn, lastCall, line: day.line.name, goals: goals ? goals.goals.map((g, i) => g.id + (goals.done[i] ? ':done' : '')) : null,
+      score: skater.score, state: skater.state, speed: +skater.speed.toFixed(2), coach: coach ? coach.step : null,
       pos: [+skater.pos.x.toFixed(2), +skater.pos.y.toFixed(2), +skater.pos.z.toFixed(2)], bails: skater.session.bails, tricks: skater.session.tricks }),
     // where the skater is on screen (CSS px): feet, head, height — for readability checks
     skaterBox: () => {
@@ -80,71 +93,131 @@ async function boot() {
       const X = (v) => (v.x * 0.5 + 0.5) * innerWidth, Y = (v) => (1 - (v.y * 0.5 + 0.5)) * innerHeight;
       return { feet: [Math.round(X(f)), Math.round(Y(f))], head: [Math.round(X(h)), Math.round(Y(h))], h: Math.round(Y(f) - Y(h)) };
     },
+    endRun: () => { if (mode === 'run' && !runOver) endRun(); },
+    setLeft: (s) => { runLeft = s; clockOn = true; },
   };
 }
 
+// ---- modes ------------------------------------------------------------------------------
 function start(m = 'free') {
   audio.ensure(); $('#screen-title').classList.remove('on'); $('#screen-results').classList.remove('on');
-  mode = m; runOver = false; frozen = false; runLeft = CFG.runSeconds;
-  document.body.classList.toggle('run', m === 'run');
+  document.body.classList.add('playing');
+  mode = m; runOver = false; frozen = false; runLeft = CFG.runSeconds; clockOn = false; lastCall = false; skater.bankMult = 1;
+  document.body.classList.toggle('run', m === 'run'); document.body.classList.remove('lastcall');
+  hud.clearCallouts();
   if (m === 'run') {
-    const sp = world.spawn;
-    skater.resetScore(); skater.respawn(sp.x, sp.y, sp.z, sp.yaw); follow.reset(skater); locTimer = 0;
+    day = getToday();
+    const L = day.line, gy = world.collide.groundAt(L.start[0], L.start[1], 200, 300).y;
+    skater.resetScore(); skater.respawn(L.start[0], gy + 0.02, L.start[1], L.start[2]); follow.reset(skater); locTimer = 0;
+    if (world.letters) world.letters.setRun(L.letters, L.name);
+    goals = new GoalTracker(day.goals);
+    hud.setGoals(day.goals, goals.done); hud.showBest = false;
     hud.shownScore = 0; hud.el.score.textContent = '0';
+    hud.callout(L.name.toUpperCase(), 'follow the light · push to start the clock', 'line');
+  } else {
+    goals = null; hud.setGoals(null); hud.showBest = true; skater.scoreLocked = false;
+    if (world.letters && world.letters.run) world.letters.setWeek();
   }
   hud.setTimer(m === 'run' ? runLeft : null);
   running = true; paused = false; last = performance.now();
-  // first-play touch hint: shown until the player's first ollie, then never again
-  if (touch && !storeGet('css-ollied')) document.body.classList.add('show-hint');
+  ticker(false);
+  // first-play coach: one prompt at a time, until the player has done each thing once
+  coach = storeGet('css-ollied') ? null : { step: 0, t: 0 };
+  paintCoach();
   requestAnimationFrame(frame);
 }
 
 // The buzzer: bank whatever was still in the air, stop taking input, show the card.
 function endRun() {
-  runOver = true; frozen = true; runLeft = 0; hud.setTimer(0);
-  if (skater.combo.length) skater.bankCombo();
-  input.resetAll();
-  const s = skater.session;
-  $('#res-score').textContent = skater.score.toLocaleString();
-  $('#res-stats').innerHTML = `best combo <b>${s.bestCombo.toLocaleString()}</b> · ${s.tricks} tricks · ${s.gaps} gaps<br>${s.bails} bails${s.bestWreck ? ` · worst wreck <b>${s.bestWreck.toLocaleString()}</b>` : ''} · top speed ${Math.round(s.topSpeed * 2.237)} mph`;
+  runOver = true; frozen = true; runLeft = 0; hud.setTimer(0, true);
+  if (skater.combo.length && skater.state !== 'bail') skater.bankCombo();
+  skater.scoreLocked = true;                         // the coast to a stop scores nothing
+  input.resetAll(); hud.clearCallouts();
+  const s = skater.session, score = skater.score;
+  const res = saveRun(day, score, goals ? goals.done : []);
+  $('#res-eyebrow').textContent = `Today's Line · ${day.line.name}`;
+  // a "new best" only means something once there was a best to beat
+  const badge = res.newRunBest && res.prevRunBest > 0 ? 'NEW ALL-TIME BEST' : res.newBestToday && res.prevBest > 0 ? 'NEW BEST TODAY' : '';
+  $('#res-badge').textContent = badge; $('#res-badge').classList.toggle('on', !!badge);
+  $('#res-goals').innerHTML = day.goals.map((g, i) => `<div class="${goals && goals.done[i] ? 'hit' : res.goals[i] ? 'today' : ''}"><b>${goals && goals.done[i] ? '✔' : res.goals[i] ? '✔' : '○'}</b> ${g.name}${goals && goals.done[i] ? '' : `<i>${hintOf(g)}</i>`}</div>`).join('');
+  $('#res-stats').innerHTML = `today's best <b>${res.best.toLocaleString()}</b> · all-time <b>${res.runBest.toLocaleString()}</b>${res.streak > 1 ? ` · <b>${res.streak}</b>-day streak` : ''}<br>best combo ${s.bestCombo.toLocaleString()} · ${s.tricks} tricks · ${s.bails} bails · top ${Math.round(s.topSpeed * 2.237)} mph`;
+  $('#res-tomorrow').textContent = `Tomorrow: ${day.tomorrow.name}`;
   $('#screen-results').classList.add('on');
+  countUp($('#res-score'), score);
   audio.handle({ type: 'spotFirst' });
-  updateLeaderboard(skater.score);
+  ticker(true);
+  updateLeaderboard(score);
 }
+// results score counts up over 0.8 s with a tick
+function countUp(el, to) {
+  const t0 = performance.now(); let lastTick = 0;
+  const f = (now) => {
+    const k = Math.min(1, (now - t0) / 800), e = 1 - Math.pow(1 - k, 3);
+    el.textContent = Math.round(to * e).toLocaleString();
+    if (now - lastTick > 70 && k < 1) { lastTick = now; audio.tick(k); }
+    if (k < 1) requestAnimationFrame(f);
+  };
+  requestAnimationFrame(f);
+}
+
 function setPaused(p) {
   paused = p; $('#screen-pause').classList.toggle('on', p); if (p) input.resetAll();
   if (p) {
     const s = skater.session;
-    $('#stats').innerHTML = `Score <b>${skater.score.toLocaleString()}</b> · best combo <b>${s.bestCombo.toLocaleString()}</b><br>${s.tricks} tricks · ${s.bails} bails · ${(s.dist / 1609).toFixed(2)} mi skated · top speed ${Math.round(s.topSpeed * 2.237)} mph<br>Worst wreck <b>${s.bestWreck.toLocaleString()}</b> · gaps cleared ${s.gaps}<br>Spots found: ${skater.spotsHit.size}/${skater.spots.length}`;
+    $('#pause-goals').innerHTML = mode === 'run' && goals
+      ? `<div class="secttl">${day.line.name} · today's goals</div>` + day.goals.map((g, i) => `<div class="${goals.done[i] ? 'hit' : ''}"><b>${goals.done[i] ? '✔' : '○'} ${g.name}</b><i>${hintOf(g)}</i></div>`).join('')
+      : '';
+    $('#stats').innerHTML = `Score <b>${skater.score.toLocaleString()}</b> · best combo <b>${s.bestCombo.toLocaleString()}</b> · ${s.tricks} tricks · ${s.bails} bails`;
+    $('#coll-sum').textContent = `Collection · spots ${skater.spotsHit.size}/${skater.spots.length} · gaps ${gaps.found.size}/${gaps.total} · challenges ${chal.done.size}/${chal.list.length}`;
     $('#spots-list').innerHTML = skater.spots.map(sp => `<div class="${skater.spotsHit.has(sp.name) ? 'hit' : ''}">${sp.name}</div>`).join('');
     $('#gaps-count').textContent = `${gaps.found.size}/${gaps.total}`;
     $('#gaps-list').innerHTML = gaps.list.map(g => `<div class="${gaps.found.has(g.name) ? 'hit' : ''}">${g.name}</div>`).join('');
     $('#chal-list').innerHTML = chal.list.map(c => { const done = chal.done.has(c.id); return `<div class="${done ? 'hit' : ''}"><b>${done ? '✔' : '○'} ${c.name}</b><i>${c.hint}</i></div>`; }).join('');
     $('#btn-mute').textContent = 'Sound: ' + (audio.muted ? 'off' : 'on');
-  } else { last = performance.now(); }
+    $('#btn-respawn').textContent = mode === 'run' ? 'Restart line' : 'Back to Church St';
+    $('#btn-map-toggle').textContent = 'Map: ' + (hud.mapOn ? 'on' : 'off');
+    ticker(true);
+  } else { last = performance.now(); ticker(false); }
 }
 $('#btn-play').addEventListener('click', () => start('free'));
 $('#btn-run').addEventListener('click', () => start('run'));
 $('#btn-again').addEventListener('click', () => start('run'));
 $('#btn-free').addEventListener('click', () => start('free'));
 $('#btn-resume').addEventListener('click', () => setPaused(false));
-$('#btn-respawn').addEventListener('click', () => { const sp = world.spawn; skater.respawn(sp.x, sp.y, sp.z, sp.yaw); follow.reset(skater); locTimer = 0; setPaused(false); });
+$('#btn-respawn').addEventListener('click', () => {
+  if (mode === 'run') { setPaused(false); start('run'); return; }
+  const sp = world.spawn; skater.respawn(sp.x, sp.y, sp.z, sp.yaw); follow.reset(skater); locTimer = 0; setPaused(false);
+});
 $('#btn-mute').addEventListener('click', () => { $('#btn-mute').textContent = 'Sound: ' + (audio.toggleMute() ? 'off' : 'on'); });
-// FLICK PAD toggle (touch only — the button is display:none on desktop). Persisted so a
-// player who prefers it gets it back next session. Keyboard and gamepad are untouched.
-let flickMode = touch && storeGet('css-flick') === '1';
-const applyFlick = () => {
-  document.body.classList.toggle('flick', flickMode);
-  $('#btn-flick').textContent = 'Tricks: ' + (flickMode ? 'flick pad' : 'buttons');
-  $('#hint').innerHTML = flickMode
-    ? '<b>Push</b> — flick the left stick up · <b>Ollie</b> — pull back on the pad, flick up'
-    : '<b>Push</b> — flick the stick up · <b>OLLIE</b> — hold, then let go';
-};
-applyFlick();
-$('#btn-flick').addEventListener('click', () => { flickMode = !flickMode; storeSet('css-flick', flickMode ? '1' : '0'); applyFlick(); });
+$('#btn-map-toggle').addEventListener('click', () => { const on = hud.toggleMap(); storeSet('css-map', on ? '1' : '0'); $('#btn-map-toggle').textContent = 'Map: ' + (on ? 'on' : 'off'); });
 window.addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 renderer.setSize(innerWidth, innerHeight);
-document.addEventListener('visibilitychange', () => { if (document.hidden && running && !paused) setPaused(true); });
+document.addEventListener('visibilitychange', () => { if (document.hidden && running && !paused && !runOver) setPaused(true); });
+
+// ---- first-play coach ---------------------------------------------------------------------
+// Three prompts, one at a time, each with its control pulsing; each clears when you do it.
+const COACH = touch
+  ? [{ txt: 'Drag up on the left to <b>push</b>', el: '#stick-zone' }, { txt: 'Tap <b>TRICK</b> for a kickflip', el: '#b-trick' }, { txt: 'Hold <b>OLLIE</b>, then let go', el: '#b-ollie' }]
+  : [{ txt: '<b>W</b> to push · <b>A/D</b> to steer' }, { txt: '<b>J</b> for a kickflip' }, { txt: 'Hold <b>Space</b>, then let go' }];
+function paintCoach() {
+  const box = $('#coach');
+  document.querySelectorAll('.pulse').forEach(e => e.classList.remove('pulse'));
+  if (!coach || coach.step >= COACH.length) { box.classList.remove('on'); return; }
+  const c = COACH[coach.step];
+  box.innerHTML = c.txt; box.classList.add('on');
+  if (c.el) $(c.el).classList.add('pulse');
+}
+function coachEvent(ev) {
+  if (!coach) return;
+  const s = coach.step;
+  if (s === 1 && ev.type === 'trick' && /flip/i.test(ev.name)) advanceCoach();
+  if (s === 2 && ev.type === 'pop' && ev.vy > CFG.ollieMin + 2.5) advanceCoach();
+}
+function advanceCoach() {
+  coach.step++;
+  if (coach.step >= COACH.length) { storeSet('css-ollied', '1'); coach = null; }
+  paintCoach();
+}
 
 function stepGame(dt, now) {
   input.poll();
@@ -154,7 +227,9 @@ function stepGame(dt, now) {
   if (input.pause) { setPaused(true); input.endFrame(); return false; }
   if (input.reset) { const g = skater.lastGround; skater.respawn(g.x, g.y + 0.05, g.z); follow.reset(skater); input.resetAll(); locTimer = 0; }
   if (input.cam) follow.mode = (follow.mode + 1) % 3;
-  if (input.map) hud.toggleMap();
+  if (input.map && mode === 'free') hud.toggleMap();
+  // the clock starts when the player does something — nothing happens until they act
+  if (mode === 'run' && !clockOn && !runOver && (input.throttle !== 0 || input.steer !== 0 || input.ollie || input.flipA || input.flipB || input.shove || input.dbl || input.grab)) clockOn = true;
   skater.update(dt, input);
   world.confine(skater);
   world.update(dt, skater);
@@ -170,16 +245,14 @@ function stepGame(dt, now) {
       if (n > 0) skater.addTrickPending({ name: n === 1 ? 'Car Hop' : n + '-Car Hop', pts: 120 * n + 80 * n * (n - 1) });
     }
     hud.handle(ev, skater); audio.handle(ev); chal.handle(ev, skater); if (evTap) evTap(ev, skater);
-    if (ev.type === 'bail') follow.kick(ev.why === 'wall' || ev.why === 'car' ? 1.2 : 0.7);
-    if (ev.type === 'land' && ev.speed > 8) follow.kick(0.25);
+    if (goals && !runOver) goals.handle(ev);
+    coachEvent(ev);
+    if (ev.type === 'bail') { follow.kick(ev.why === 'wall' || ev.why === 'car' ? 1.2 : 0.7); buzz([30, 40, 30]); }
+    if (ev.type === 'land') { if (ev.speed > 8) follow.kick(0.25); buzz(10); }
     if (ev.type === 'maple') { mesh.leafBurst(skater.pos); follow.kick(0.4); }
-    if (ev.type === 'stomp') { mesh.stompBurst(skater.pos); follow.kick(0.5); }
-    if (ev.type === 'gap') follow.kick(0.3);
-    if (ev.type === 'pop' && document.body.classList.contains('show-hint')) {
-      document.body.classList.add('hint-out');
-      storeSet('css-ollied', '1');
-      setTimeout(() => document.body.classList.remove('show-hint', 'hint-out'), 700);
-    }
+    if (ev.type === 'stomp') { mesh.stompBurst(skater.pos); follow.kick(0.5); buzz(25); hitPause = Math.max(hitPause, 0.12); }
+    if (ev.type === 'gap') { follow.kick(0.3); if (ev.first) hitPause = Math.max(hitPause, 0.12); }
+    if (ev.type === 'letter' && ev.run && mode === 'run' && !runOver) { skater.award(LETTER_PTS); runLeft += LETTER_SECS; clockOn = true; hud.bumpTimer(); buzz(15); }
   }
   skater.events.length = 0;
   // free skate has no run to reset trick staleness, so it wears off once a minute
@@ -187,11 +260,31 @@ function stepGame(dt, now) {
   chal.update(dt, skater);
   for (const c of chal.justDone) { hud.callout('CHALLENGE: ' + c.name, chal.remaining ? `${chal.remaining} to go` : 'that is all of them'); audio.handle({ type: 'spotFirst' }); }
   chal.justDone.length = 0;
+  // today's goals: +1,500 each, +5,000 for all three
+  if (goals && mode === 'run' && !runOver) {
+    if (clockOn) goals.update(dt, skater);
+    for (const g of goals.justDone) {
+      const i = goals.goals.indexOf(g); skater.award(GOAL_PTS); hud.markGoal(i);
+      hud.callout('GOAL: ' + g.name, `+${GOAL_PTS.toLocaleString()}`, 'goal'); audio.handle({ type: 'goal' }); buzz(20);
+      if (goals.all) { skater.award(ALL_GOALS_PTS); hud.callout('LINE CLEARED', `all three goals · +${ALL_GOALS_PTS.toLocaleString()}`, 'gold'); audio.handle({ type: 'spotFirst' }); }
+    }
+    goals.justDone.length = 0;
+  }
+  if (coach && coach.step === 0 && skater.speed > 5) advanceCoach();
   mesh.update(dt, skater, now / 1000);
   follow.update(dt, skater);
   locTimer -= dt; if (locTimer <= 0) { locTimer = 0.4; curLoc = world.locationName(skater.pos.x, skater.pos.z); }
-  if (mode === 'run' && !runOver) { runLeft -= dt; hud.setTimer(runLeft); if (runLeft <= 0) endRun(); }
-  hud.update(dt, skater, curLoc);
+  if (mode === 'run' && !runOver) {
+    if (clockOn) runLeft -= dt;
+    // LAST CALL: the final 20 seconds must not feel like the first — every bank counts double
+    if (!lastCall && clockOn && runLeft <= CFG.lastCall) {
+      lastCall = true; skater.bankMult = 2; document.body.classList.add('lastcall');
+      hud.callout('LAST CALL ×2', 'every combo counts double', 'last'); audio.handle({ type: 'lastcall' }); buzz([20, 30, 20]);
+    }
+    hud.setTimer(runLeft, lastCall);
+    if (runLeft <= 0) endRun();
+  }
+  hud.update(dt, skater, mode === 'run' ? '' : curLoc);
   audio.update(dt, skater);
   input.endFrame();
   return true;
@@ -202,11 +295,14 @@ function frame(now) {
   requestAnimationFrame(frame);
   let dt = Math.min(0.05, (now - last) / 1000); last = now;
   if (paused) return;
+  // HIT-PAUSE: a stomp or a new gap freezes the world to 20% speed for 120 ms
+  const realDt = dt;
+  if (hitPause > 0) { hitPause -= dt; dt *= 0.2; }
   if (!stepGame(dt, now)) return;
   updateHole(camera, renderer, skater.pos, !window.__noHole);
   renderer.render(scene, camera);
   // adaptive quality
-  fpsAcc += dt; fpsN++;
+  fpsAcc += realDt; fpsN++;
   if (fpsAcc > 2) { const fps = fpsN / fpsAcc; fpsAcc = 0; fpsN = 0;
     if (fps < 40) { lowFpsT++; if (lowFpsT >= 2) { lowFpsT = 0; world.degrade(renderer); } } else lowFpsT = 0; }
 }

@@ -2,6 +2,11 @@
 // rotates weekly (ISO week seed), and what you have collected is remembered per week, so
 // every Monday there is a fresh reason to go somewhere you don't normally skate.
 //
+// TODAY'S LINE (2026-11-16): during a run the same five letters are re-laid along the day's
+// line and reset every run. They are the breadcrumbs — a tall soft light column stands on the
+// next one so you can see where to go from 150 m away — and each is worth +500 and +5 s
+// (main.js owns the clock). Free skate gets the weekly route back exactly as before.
+//
 // Renders as one small group of crossed-quad meshes — each letter is two quads at right
 // angles so it never vanishes edge-on, 8 triangles apiece, one draw call each, and only
 // the ones within 90 m are visible so the draw-call budget barely notices.
@@ -12,6 +17,7 @@ export const LETTERS = ['B', 'T', 'O', 'W', 'N'];
 const REACH = 1.2;          // metres — collect radius, in any state
 const SHOW = 90;            // metres — draw distance
 const HOVER = 1.4;          // metres above the ground under the letter
+const RUN_REACH = 2.0;      // a run is timed: be generous about what counts as "got it"
 
 // Four routes. Every coordinate below was checked with __ground / __near: each sits on
 // skateable ground (brick, sidewalk, asphalt or park path) and clear of building walls.
@@ -82,7 +88,28 @@ export function buildLetters(ctx) {
   }
   for (const it of items) if (got.has(it.ch)) it.mesh.visible = false;
 
-  const state = { route: route.name, routeIdx, got, items, total: LETTERS.length, all: LETTERS, key: KEY };
+  // the beacon: one unlit, fogless, see-through cylinder on the next letter of a run
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 40, 14, 1, true),
+    new THREE.MeshBasicMaterial({ color: 0xfff0a8, transparent: true, opacity: 0.35, depthWrite: false, fog: false, side: THREE.DoubleSide }));
+  beam.name = 'btown-beacon'; beam.visible = false; beam.renderOrder = 2; group.add(beam);
+
+  const week = { route: route.name, routeIdx, pts: route.pts };
+  const state = { route: route.name, routeIdx, got, items, total: LETTERS.length, all: LETTERS, key: KEY, run: false, next: null,
+    // lay the letters along a run's line and start fresh (nothing is persisted in a run)
+    setRun(pts, name) {
+      state.run = true; state.route = name || 'run'; got.clear();
+      items.forEach((it, i) => place(it, pts[i]));
+    },
+    // back to this week's route and what you had collected on it
+    setWeek() {
+      state.run = false; state.route = week.route; got.clear();
+      let s2 = []; try { s2 = JSON.parse(storeGet(KEY, '[]')); } catch { s2 = []; }
+      for (const c of (Array.isArray(s2) ? s2 : [])) got.add(c);
+      items.forEach((it, i) => place(it, week.pts[i]));
+      beam.visible = false; state.next = null;
+    },
+  };
+  function place(it, p) { it.x = p[0]; it.z = p[1]; it.y = collide.groundAt(p[0], p[1], 500, 1000).y + HOVER; it.mesh.position.set(it.x, it.y, it.z); }
   ctx.letters = state;
 
   let t = 0;
@@ -96,11 +123,20 @@ export function buildLetters(ctx) {
       it.mesh.rotation.y = t * 1.1;
       it.mesh.position.y = it.y + Math.sin(t * 1.6 + it.x) * 0.12;
       // collect: proximity in 3D, in any state — you can grab one mid-air
-      if (d2 < REACH * REACH && Math.abs(sk.pos.y - it.y) < 2.0) {
-        got.add(it.ch); storeSet(KEY, JSON.stringify([...got])); it.mesh.visible = false;
-        sk.emit('letter', { ch: it.ch, n: got.size, total: LETTERS.length });
-        if (got.size >= LETTERS.length) { sk.award(2500); sk.emit('letters', { pts: 2500 }); }
+      const reach = state.run ? RUN_REACH : REACH;
+      if (d2 < reach * reach && Math.abs(sk.pos.y - it.y) < 2.2) {
+        got.add(it.ch); it.mesh.visible = false;
+        if (!state.run) storeSet(KEY, JSON.stringify([...got]));
+        sk.emit('letter', { ch: it.ch, n: got.size, total: LETTERS.length, run: state.run });
+        if (got.size >= LETTERS.length) { sk.award(2500); sk.emit('letters', { pts: 2500, run: state.run }); }
       }
+    }
+    // beacon on the next letter of the line (route order)
+    if (state.run) {
+      const nx = items.find(it => !got.has(it.ch)) || null;
+      state.next = nx;
+      beam.visible = !!nx;
+      if (nx) { beam.position.set(nx.x, nx.y + 19, nx.z); beam.material.opacity = 0.28 + 0.08 * Math.sin(t * 3); }
     }
   });
   return state;

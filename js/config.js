@@ -44,5 +44,6 @@ export const CFG = {
     hardflip: 260, varialkick: 220, inward: 260, laser: 340, backflip: 420,
     spin180: 80, spin360: 260, spin540: 600, spin720: 1100,
     grindPerSec: 90, grindBase: 80, manualBase: 60, manualPerSec: 70, bigAir: 50, revert: 60, maple: 1200 },
-  runSeconds: 120,         // 2-MINUTE RUN mode
+  runSeconds: 90,          // TODAY'S LINE: 90 s, +5 s per letter (was a 120 s run)
+  lastCall: 20,            // final seconds of a run: every bank counts double
 };
