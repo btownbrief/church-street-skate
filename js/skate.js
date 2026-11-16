@@ -7,6 +7,7 @@ import { clamp, lerp, fwd, yawOf, angleDiff, wrapAngle, damp, dampAngle, storeGe
 const V = () => new THREE.Vector3();
 const _f = V(), _tmp = V(), _g = {};
 const STEP = 1 / 120;
+const v0 = (v) => Math.hypot(v.x, v.z);
 
 export class Skater {
   constructor(collide, spawn) {
@@ -53,7 +54,7 @@ export class Skater {
     this.grind = null; this.manual = null; this.bail = null; this.grab = null; this.combo = []; this.comboPending = 0;
     this.yawVel = 0; this.spinAccum = 0; this.shoveOff = 0; this.charging = false; this.charge = 0; this.crouch = 0; this.balance = 0;
     this.lastEdge = null; this.grindCooldown = 0; this.wallHitCooldown = 0; this._landedAt = -1; this._revertAt = -1; this.groundKind = 'ground'; this.groundObj = null; this.normal.set(0, 1, 0);
-    this.onGround = true; this._acc = 0; this.sketchy = 0; this.braking = false;
+    this.onGround = true; this._acc = 0; this.sketchy = 0; this.braking = false; this._coyote = null;
     const P = this._pend; P.flipA = P.flipB = P.shove = P.olliePressed = P.ollieReleased = P.ollieCancel = false;
     this.events.length = 0;
   }
@@ -78,6 +79,10 @@ export class Skater {
     P.flipA = P.flipB = P.shove = P.olliePressed = P.ollieReleased = P.ollieCancel = false;
     if (this.grindCooldown > 0) this.grindCooldown -= dt;
     if (this.wallHitCooldown > 0) this.wallHitCooldown -= dt;
+    // A charge can only be released on the ground or a grind. If the board left the ground
+    // (rolled off a kicker lip) while OLLIE was held, letting go in the air must still end the
+    // charge — otherwise `charging` stuck true froze pushing and banking for the whole run.
+    if ((ev.ollieReleased || ev.ollieCancel) && (this.state === 'air' || this.state === 'bail')) { this.charging = false; this.charge = 0; }
     this.session.topSpeed = Math.max(this.session.topSpeed, this.vel.length());
     switch (this.state) {
       case 'ride': this.stepRide(dt, inp, ev, false); break;
@@ -128,7 +133,7 @@ export class Skater {
     // Speed scales the pop: rolling fast you load the tail harder. +30% at the 28 m/s cap,
     // so a full charge goes from 3.9 m of air standing still to ~6.6 m flat out.
     vy *= 1 + 0.30 * clamp(Math.hypot(this.vel.x, this.vel.z) / 28, 0, 1);
-    this.state = 'air'; this.onGround = false; this.vel.y = vy; this.pos.y += 0.03; this.airTime = 0; this.airPeak = this.pos.y; this.spinAccum = 0; this.yawVel = 0; this.crouch = 0; this.charging = false;
+    this._coyote = null; this.state = 'air'; this.onGround = false; this.vel.y = vy; this.pos.y += 0.03; this.airTime = 0; this.airPeak = this.pos.y; this.spinAccum = 0; this.yawVel = 0; this.crouch = 0; this.charging = false;
     this._airFlips = 0; this._airFlipName = null;
     this.bodyFlip = null; this._bodyFlips = 0;
     this._backHeld = inp ? inp.throttle < -0.5 : false;  // holding brake through takeoff ≠ asking for a backflip
@@ -140,6 +145,8 @@ export class Skater {
   // ---- RIDE / MANUAL ------------------------------------------------------------
   stepRide(dt, inp, ev, manual) {
     const cw = this.cw, p = this.pos, v = this.vel;
+    // belt and braces: a charge with the button no longer held is cancelled (no pop)
+    if (this.charging && !inp.ollie && !ev.ollieReleased) { this.charging = false; this.charge = 0; }
     // stairs, skate ramps and car bodywork climb faster than the default stepUp allows per
     // substep — and the big sideTol keeps the cabin sides from shoving you off a car roof
     const onStairs = this.groundKind === 'stairs' || this.groundKind === 'ramp' || this.groundKind === 'quarter' || this.groundKind === 'car';
@@ -215,7 +222,10 @@ export class Skater {
         }
       }
       this.state = 'air'; this.onGround = false; this.airTime = 0; this.airPeak = p.y; this.spinAccum = 0; this.yawVel = 0; this.flip = null;
-      this._airFlips = 0; this._airFlipName = null;
+      // coyote pop: still holding OLLIE as the board leaves the lip → a release in the next
+      // 0.15 s still pops (stepAir), so a late thumb isn't punished
+      this._coyote = this.charging ? { t: this.t, charge: this.charge } : null;
+      this._airFlips = 0; this._airFlipName = null; this.charging = false; this.charge = 0;
       return;
     }
     p.y = g.y; this.onGround = true; this.groundKind = g.kind; this.groundObj = g.obj; this.normal.set(g.nx, g.ny, g.nz);
@@ -306,6 +316,14 @@ export class Skater {
   stepAir(dt, inp, ev) {
     const cw = this.cw, p = this.pos, v = this.vel;
     this.airTime += dt; this.crouch = damp(this.crouch, 0.25, 6, dt);
+    if (this._coyote && ev.ollieReleased) {
+      if (this.t - this._coyote.t < 0.15) {
+        const vy = lerp(CFG.ollieMin, CFG.ollieMax, clamp(this._coyote.charge / CFG.ollieCharge, 0, 1)) * (1 + 0.30 * clamp(v0(this.vel) / 28, 0, 1));
+        if (vy > this.vel.y) this.vel.y = vy;
+        this.emit('pop', { vy });
+      }
+      this._coyote = null;
+    }
     // spin
     const want = -inp.steer * CFG.spinRate; this.yawVel = damp(this.yawVel, want, CFG.spinResponse, dt);
     this.yaw += this.yawVel * dt; this.spinAccum += this.yawVel * dt;

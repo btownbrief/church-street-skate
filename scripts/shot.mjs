@@ -14,7 +14,7 @@ page.on('console', m => { if (m.type() === 'error' || m.type() === 'warning') er
 page.on('pageerror', e => errors.push('PAGEERROR: ' + e.message + '\n' + (e.stack||'').split('\n').slice(0,4).join('\n')));
 if (process.env.SKIP) { const skip = process.env.SKIP.split(','); await page.route(/\/js\/.*\.js$/, (route) => { const u = route.request().url(); if (skip.some(k => u.endsWith('/js/' + k + '.js'))) route.abort(); else route.continue(); }); }
 await page.goto(url); 
-await page.waitForFunction(() => !document.querySelector('#btn-play').disabled, null, { timeout: 120000 }).catch(e => errors.push('boot timeout'));
+await page.waitForFunction(() => !!window.__tp && !document.querySelector('#btn-play').disabled, null, { timeout: 120000 }).catch(e => errors.push('boot timeout'));
 const loading = await page.textContent('#loading').catch(()=>'');
 console.log('LOADING:', loading);
 await page.screenshot({ path: out + '-0-title.png' });

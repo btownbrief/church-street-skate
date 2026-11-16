@@ -18,7 +18,7 @@ page.on('console', (m) => { const t = m.text(); if ((m.type() === 'error' || m.t
 page.on('pageerror', (e) => errors.push('PAGEERROR: ' + e.message));
 
 await page.goto(process.env.URL || 'http://localhost:8765/index.html');
-await page.waitForFunction(() => !document.querySelector('#btn-play').disabled, null, { timeout: 180000 });
+await page.waitForFunction(() => !!window.__tp && !document.querySelector('#btn-play').disabled, null, { timeout: 180000 });
 console.log('viewport', JSON.stringify(page.viewportSize()));
 await page.screenshot({ path: out + '-0-title.png', timeout: 120000 });
 await page.tap('#btn-play');

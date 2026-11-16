@@ -14,7 +14,7 @@ const errors = [];
 page.on('console', m => { const t = m.text(); if (/GPU stall|skipping \.\//.test(t)) return; if (m.type() === 'error' || m.type() === 'warning') errors.push(m.type() + ': ' + t); });
 page.on('pageerror', e => errors.push('PAGEERROR: ' + e.message + '\n' + (e.stack || '').split('\n').slice(0, 4).join('\n')));
 await page.goto(url);
-await page.waitForFunction(() => !document.querySelector('#btn-play').disabled, null, { timeout: 120000 }).catch(() => errors.push('boot timeout'));
+await page.waitForFunction(() => !!window.__tp && !document.querySelector('#btn-play').disabled, null, { timeout: 120000 }).catch(() => errors.push('boot timeout'));
 await page.click('#btn-play');
 await page.waitForTimeout(500);
 

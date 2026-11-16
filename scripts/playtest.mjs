@@ -18,7 +18,7 @@ const errors = [];
 page.on('console', m => { const t = m.text(); if ((m.type() === 'error' || m.type() === 'warning') && !/GL Driver Message/.test(t)) errors.push(m.type() + ': ' + t); });
 page.on('pageerror', e => errors.push('PAGEERROR: ' + e.message));
 await page.goto(process.env.URL || 'http://localhost:8765/index.html');
-await page.waitForFunction(() => !document.querySelector('#btn-play').disabled, null, { timeout: 180000 });
+await page.waitForFunction(() => !!window.__tp && !document.querySelector('#btn-play').disabled, null, { timeout: 180000 });
 await page.click('#btn-play');
 await page.waitForTimeout(500);
 

@@ -17,7 +17,7 @@ const errors = [];
 page.on('console', m => { const t = m.text(); if ((m.type() === 'error' || m.type() === 'warning') && !/GL Driver Message/.test(t)) errors.push(m.type() + ': ' + t); });
 page.on('pageerror', e => errors.push('PAGEERROR: ' + e.message));
 await page.goto(process.env.URL || 'http://localhost:8765/index.html');
-await page.waitForFunction(() => !document.querySelector('#btn-play').disabled, null, { timeout: 180000 });
+await page.waitForFunction(() => !!window.__tp && !document.querySelector('#btn-play').disabled, null, { timeout: 180000 });
 await page.click('#btn-play');
 await page.waitForTimeout(500);
 
@@ -273,7 +273,7 @@ checks.maple = async () => {
 checks.run = async () => {
   // restart the page into run mode so the real title-screen button path is exercised
   await page.goto(process.env.URL || 'http://localhost:8765/index.html');
-  await page.waitForFunction(() => !document.querySelector('#btn-play').disabled, null, { timeout: 180000 });
+  await page.waitForFunction(() => !!window.__tp && !document.querySelector('#btn-play').disabled, null, { timeout: 180000 });
   await page.click('#btn-run');
   await page.waitForTimeout(300);
   const started = await ev(() => ({ timer: document.querySelector('#timer').textContent, run: document.body.classList.contains('run'), score: window.__dbg().score }));
@@ -618,6 +618,28 @@ checks.rollins = async () => {
     return out;
   });
   report('Main St drop-in line rides out', r.main.air && r.main.end === 'ride' && r.main.topSpeed > 14, JSON.stringify(r.main));
+};
+
+// ------------------------------------------- UPGRADE 2026-11-16: FROZEN SKATER ----
+// Hold OLLIE into a Mall kicker, roll off the lip still holding, let go in the air. Before the
+// fix `charging` stayed true forever: no pushing, no banking, charge bar lit for the rest of
+// the run. After it, pushing works on landing and the bar is gone.
+checks.freeze = async () => {
+  const r = await ev(() => {
+    const k = window.__world.collide.all.ramps.find(rr => rr.name === 'Mall kicker');
+    const yaw = Math.atan2(-k.ux, -k.uz);
+    window.__tp(k.ax - k.ux * 7, k.az - k.uz * 7, yaw, 10);
+    window.__press('Space');
+    let airT = 0, sawAir = false;
+    for (let i = 0; i < 120 && airT < 0.35; i++) { window.__sim(1 / 60); if (window.__dbg().state === 'air') { sawAir = true; airT += 1 / 60; } }
+    window.__release('Space');
+    for (let i = 0; i < 240; i++) { window.__sim(1 / 60); if (window.__dbg().state === 'ride') break; }
+    window.__sim(0.3);
+    window.__sim(2, ['ArrowUp']);
+    const d = window.__dbg();
+    return { sawAir, state: d.state, sp: +Math.hypot(d.vel[0], d.vel[2]).toFixed(1), barOn: document.querySelector('#charge').classList.contains('on') };
+  });
+  report('no frozen skater after a held-ollie kicker launch', r.sawAir && r.sp > 6 && !r.barOn, JSON.stringify(r));
 };
 
 const all = want.length ? want : Object.keys(checks);
