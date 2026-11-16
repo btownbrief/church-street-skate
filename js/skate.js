@@ -255,6 +255,7 @@ export class Skater {
         const w = this.wallHit(hit, vn);
         if (w === 'bail') return;
         if (!w) { v.x -= hit.nx * vn * 1.05; v.z -= hit.nz * vn * 1.05; this.wallHitCooldown = 0.3; if (-vn > 2) this.emit('bump', { speed: -vn }); }
+        if (w === 'stumble' && manual) manual = false;      // a stumble knocked you out of the manual
       }
     }
     // manual balance

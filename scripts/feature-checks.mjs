@@ -47,13 +47,15 @@ checks.flow = async () => {
     window.__tp(-11, -60, Math.PI, 0);
     window.__world && (window.__dbg());
     let cold = 0;
-    for (let i = 0; i < 60 * 14; i++) { window.__sim(1 / 60, ['ArrowUp']); const d = window.__dbg(); cold = Math.max(cold, Math.hypot(d.vel[0], d.vel[2])); }
+    // (rolling speed only, first 8 s: further down the mall the kickers and furniture decide the
+    // top speed, not the push ceiling — round 3's softer walls made that part a coin toss)
+    for (let i = 0; i < 60 * 8; i++) { window.__sim(1 / 60, ['ArrowUp']); const d = window.__dbg(); if (d.state === 'ride') cold = Math.max(cold, Math.hypot(d.vel[0], d.vel[2])); }
     const coldFlow = window.__flow();
     // hot: same stretch with the flow meter filled
     window.__tp(-11, -60, Math.PI, 0);
     window.__setFlow(1);
     let hot = 0;
-    for (let i = 0; i < 60 * 14; i++) { window.__sim(1 / 60, ['ArrowUp']); const d = window.__dbg(); hot = Math.max(hot, Math.hypot(d.vel[0], d.vel[2])); }
+    for (let i = 0; i < 60 * 8; i++) { window.__sim(1 / 60, ['ArrowUp']); const d = window.__dbg(); if (d.state === 'ride') hot = Math.max(hot, Math.hypot(d.vel[0], d.vel[2])); }
     // and the ceiling itself, which the speeds above can't isolate because the mall runs
     // downhill and gravity along the slope carries both runs past the push cap
     window.__setFlow(0); const ceilCold = window.__maxPush();
