@@ -305,7 +305,7 @@ checks.run = async () => {
     return out;
   });
   report("Today's Line starts on the day's line, clock waits for input",
-    /College Hill/.test(title) && r.started.line === 'College Hill' && r.timer0 === '1:30' && r.idle === 90 && r.chips === 3,
+    /College Hill/.test(title) && r.started.line === 'College Hill' && r.timer0 === '1:20' && r.idle === 80 && r.chips === 3,
     `title "${title}", start ${r.started.pos}, clock ${r.timer0} → ${r.idle} s after 1 s idle, ${r.chips} goal chips`);
   report('a letter adds 3 s and 500', r.letter.dt > 2.5 && r.letter.dScore >= 500, JSON.stringify(r.letter));
   report('Last Call doubles banks in the final 30 s', r.lastCall && r.bankMult === 2, `lastCall=${r.lastCall} bank mult=${r.bankMult}`);

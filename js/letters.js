@@ -286,17 +286,25 @@ export function buildLetters(ctx) {
     R.pts.forEach((p, i) => { const ox = p[0] - x, oz = p[1] - z, d = Math.hypot(ox, oz); if (d < 15 || d > maxD) return; if ((ox * dx + oz * dz) / d < 0.35) return; if (d < bd) { bd = d; best = i; } });
     return best;
   }
-  // lay the next gold letter from wherever the skater is: the run if any of it is ahead,
-  // otherwise (for a downhill run) the chairlift, otherwise the street walk
+  // lay the next gold letter from wherever the skater is: the run if any of it is ahead;
+  // past the bottom of a downhill run, the chairlift; lost somewhere else, the nearest point
+  // of the run (that keeps the light in the line's own neighbourhood — the old street walk
+  // would lead a lost player right out of it); only with no run at all, the street walk
   function layFrom(x, z, dx, dz, maxD, allowLift = false) {
+    const R = state.goldRun;
     const i = aheadIdx(x, z, dx, dz, maxD);
     if (i >= 0) { layIdx(i); return; }
-    if (allowLift && state.goldRun && !state.goldRun.loop) { lift(); return; }
-    if (state.goldRun && state.goldRun.loop) {   // a loop: nearest point you are not on top of
-      let best = -1, bd = 1e9; state.goldRun.pts.forEach((p, k) => { const d = Math.hypot(p[0] - x, p[1] - z); if (d >= 25 && d < bd) { bd = d; best = k; } });
-      if (best >= 0 && bd < 200) { layIdx(best); return; }
+    if (R && !R.loop && (allowLift || pastBottom(x, z))) { lift(); return; }
+    if (R) {
+      let best = -1, bd = 1e9; R.pts.forEach((p, k) => { const d = Math.hypot(p[0] - x, p[1] - z); if (d >= 20 && d < bd) { bd = d; best = k; } });
+      if (best >= 0 && bd < 400) { layIdx(best); return; }
     }
     layWalk(x, z, dx, dz);
+  }
+  function pastBottom(x, z) {
+    const P = state.goldRun.pts, a = P[P.length - 2], b = P[P.length - 1];
+    const ux = b[0] - a[0], uz = b[1] - a[1], l = Math.hypot(ux, uz) || 1;
+    return Math.hypot(x - b[0], z - b[1]) < 120 && ((x - b[0]) * ux + (z - b[1]) * uz) / l > -10;
   }
   // advance along the run after the current point was taken (or ridden past)
   function advance() {
@@ -378,6 +386,7 @@ export function buildLetters(ctx) {
         if (G.t > 1.5 && (far || past || stale)) {
           const v = Math.hypot(sk.vel.x, sk.vel.z) > 1 ? { x: sk.vel.x, z: sk.vel.z } : { x: G.dx, z: G.dz };
           if (past && state.goldIdx >= 0) advance();
+          else if (stale && !far) { const k = aheadIdx(sk.pos.x, sk.pos.z, v.x, v.z, 150); if (k >= 0 && k !== state.goldIdx) layIdx(k); else G.t = 0; }
           else { state.last = { x: sk.pos.x, z: sk.pos.z }; state.lastDir = v; layFrom(sk.pos.x, sk.pos.z, v.x, v.z, 150); }
         }
       }
