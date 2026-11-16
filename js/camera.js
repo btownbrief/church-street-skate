@@ -55,8 +55,8 @@ export class FollowCamera {
     const still = sp < 1.5 && sk.state === 'ride' ? 1 : 0;
     this.idle = this.first ? still : damp(this.idle ?? still, still, still ? 1.5 : 3, dt);
     // look target ahead of the skater
-    const la = ((portrait ? CFG.camLookAheadPortrait : CFG.camLookAhead) + sp * 0.12 + this.idle * 6) * (1 - 0.55 * this.lift);   // lifted: look nearer, keep him mid-screen
-    const lx = sk.pos.x + _f.x * la, ly = sk.pos.y + (portrait ? CFG.camLookYPortrait : 0.9) + this.idle * (1 - this.lift) * 1.6 + (sk.state === 'air' ? 0.4 : 0), lz = sk.pos.z + _f.z * la;
+    const la = ((portrait ? CFG.camLookAheadPortrait : CFG.camLookAhead) + sp * 0.12 + this.idle * 2.5) * (1 - 0.55 * this.lift);   // lifted: look nearer, keep him mid-screen
+    const lx = sk.pos.x + _f.x * la, ly = sk.pos.y + (portrait ? CFG.camLookYPortrait : 0.9) + this.idle * (1 - this.lift) * 0.5 + (sk.state === 'air' ? 0.4 : 0), lz = sk.pos.z + _f.z * la;
     this.look.x += (lx - this.look.x) * (this.first ? 1 : 1 - Math.exp(-10 * dt));
     this.look.y += (ly - this.look.y) * (this.first ? 1 : 1 - Math.exp(-6 * dt));
     this.look.z += (lz - this.look.z) * (this.first ? 1 : 1 - Math.exp(-10 * dt));

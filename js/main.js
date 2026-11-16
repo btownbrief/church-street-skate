@@ -98,6 +98,20 @@ async function boot() {
       const X = (v) => (v.x * 0.5 + 0.5) * innerWidth, Y = (v) => (1 - (v.y * 0.5 + 0.5)) * innerHeight;
       return { feet: [Math.round(X(f)), Math.round(Y(f))], head: [Math.round(X(h)), Math.round(Y(h))], h: Math.round(Y(f) - Y(h)) };
     },
+    // where the next letter's light is on screen, and how close any card / popup / pill gets to it
+    light: () => {
+      const n = world.letters && world.letters.next; if (!n) return null;
+      const v = new THREE.Vector3(n.x, n.y, n.z).project(camera);
+      const x = (v.x * 0.5 + 0.5) * innerWidth, y = (1 - (v.y * 0.5 + 0.5)) * innerHeight;
+      if (v.z > 1 || x < 0 || x > innerWidth || y < 0 || y > innerHeight) return { on: false, why: v.z > 1 ? 'behind' : 'offscreen', chevron: $('#chev').classList.contains('on') };
+      let minDom = 1e9; const hits = [];
+      for (const el of document.querySelectorAll('#callout.on, #popups > *, #coach.on, .backpill.on, #combo.on')) {
+        const r = el.getBoundingClientRect(); if (!r.width || getComputedStyle(el).opacity === '0') continue;
+        const dx = Math.max(r.left - x, 0, x - r.right), dy = Math.max(r.top - y, 0, y - r.bottom), d = Math.hypot(dx, dy);
+        if (d < minDom) minDom = d; if (d < 60) hits.push(el.id || el.className);
+      }
+      return { on: true, x: Math.round(x), y: Math.round(y), minDom: Math.round(minDom), hits };
+    },
     endRun: () => { if (mode === 'run' && !runOver) endRun(); },
     setLeft: (s) => { runLeft = s; clockOn = true; },
   };
