@@ -38,7 +38,7 @@ scene.add(camera);
 const input = new Input();
 const audio = new Audio();
 let world, skater, mesh, follow, hud, chal, gaps, running = false, paused = false, last = performance.now(), fpsAcc = 0, fpsN = 0, lowFpsT = 0;
-let locTimer = 0, curLoc = '', freshT = 0, hitPause = 0;
+let locTimer = 0, curLoc = '', freshT = 0, hitPause = 0, looping = false;
 // TODAY'S LINE. main.js owns the whole thing: skate.js only ever sees a normal input object
 // and a bank multiplier, and never learns there is a clock.
 let mode = 'free', runLeft = 0, runOver = false, frozen = false, clockOn = false, lastCall = false;
@@ -124,7 +124,8 @@ function start(m = 'free') {
   // first-play coach: one prompt at a time, until the player has done each thing once
   coach = storeGet('css-ollied') ? null : { step: 0, t: 0 };
   paintCoach();
-  requestAnimationFrame(frame);
+  // one frame loop only: "Again" from the results card starts a run while the loop is live
+  if (!looping) { looping = true; requestAnimationFrame(frame); }
 }
 
 // The buzzer: bank whatever was still in the air, stop taking input, show the card.
@@ -291,7 +292,7 @@ function stepGame(dt, now) {
 }
 
 function frame(now) {
-  if (!running) return;
+  if (!running) { looping = false; return; }
   requestAnimationFrame(frame);
   let dt = Math.min(0.05, (now - last) / 1000); last = now;
   if (paused) return;
