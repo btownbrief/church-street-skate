@@ -57,11 +57,21 @@ export async function buildWorld({ scene, renderer, camera, quality }) {
     carsCleared: (ax, az, bx, bz) => (ctx.carsCleared ? ctx.carsCleared(ax, az, bx, bz) : 0),
     update(dt, skater) { for (const u of updaters) u(dt, skater); },
     locationName(x, z) { return locator(x, z); },
+    // The map edge BOUNCES you back in (2026-11-16 final). It used to multiply your speed by
+    // 0.2 every frame you touched it — on a slope that leans into the edge (the waterfront)
+    // that was glue: 0 mph forever. Now only the outward part of the velocity flips (keeping
+    // 60%), the part along the edge is kept, and a real hit turns the board to face inward.
     confine(sk) {
-      const m = 2; let hit = false;
-      if (sk.pos.x < play.minX + m) { sk.pos.x = play.minX + m; hit = true; } if (sk.pos.x > play.maxX - m) { sk.pos.x = play.maxX - m; hit = true; }
-      if (sk.pos.z < play.minZ + m) { sk.pos.z = play.minZ + m; hit = true; } if (sk.pos.z > play.maxZ - m) { sk.pos.z = play.maxZ - m; hit = true; }
-      if (hit) { sk.vel.x *= 0.2; sk.vel.z *= 0.2; }
+      const m = 2; let nx = 0, nz = 0;
+      if (sk.pos.x < play.minX + m) { sk.pos.x = play.minX + m; nx = 1; } if (sk.pos.x > play.maxX - m) { sk.pos.x = play.maxX - m; nx = -1; }
+      if (sk.pos.z < play.minZ + m) { sk.pos.z = play.minZ + m; nz = 1; } if (sk.pos.z > play.maxZ - m) { sk.pos.z = play.maxZ - m; nz = -1; }
+      if (!nx && !nz) return;
+      const out = Math.max(nx ? -sk.vel.x * nx : 0, nz ? -sk.vel.z * nz : 0);
+      if (nx && sk.vel.x * nx < 0) sk.vel.x = -sk.vel.x * 0.6;
+      if (nz && sk.vel.z * nz < 0) sk.vel.z = -sk.vel.z * 0.6;
+      // a slope pushing you into the edge still gets a little kick off it
+      if (nx) sk.vel.x += nx * 0.6; if (nz) sk.vel.z += nz * 0.6;
+      if (out > 1.5 && sk.state === 'ride') sk.yaw = Math.atan2(-sk.vel.x, -sk.vel.z);
     },
     degrade(renderer) {
       if (degradeLevel >= 3) return;                    // nothing left to turn off

@@ -29,20 +29,29 @@ export class FollowCamera {
     const height = (this.mode === 2 ? 4.2 : portrait ? CFG.camHeightPortrait : CFG.camHeight) + (sk.state === 'air' ? 0.3 : 0);
     fwd(this.yaw, _f);
     let px = sk.pos.x - _f.x * dist, pz = sk.pos.z - _f.z * dist;
-    // line of sight: shorten if a wall sits between the skater and the camera point
+    // LINE OF SIGHT (2026-11-16 final): when a wall sits between the skater and the camera
+    // point, the boom first RISES (up to 6 m) and only then pulls in, never closer than 3 m.
+    // Pulling straight in used to put the lens a metre behind his jacket in alleys (the
+    // skater 750+ px tall); from up high and close the camera looks down past the wall at him.
     const hitT = this.cw.raycastWalls(sk.pos.x, sk.pos.z, px, pz, sk.pos.y + 1.2);
-    if (hitT < 1) { const d2 = Math.max(1.6, dist * hitT - 0.4); this.losDist = damp(this.losDist ?? dist, d2, 14, dt); } else this.losDist = damp(this.losDist ?? dist, dist, 3, dt);
+    const MIN = Math.min(3.0, dist);
+    let wantD = dist, block = 0;
+    if (hitT < 1) { const free = dist * hitT - 0.4; wantD = Math.max(MIN, free); block = clamp((dist - free) / Math.max(0.5, dist - 1.0), 0, 1); }
+    this.losDist = damp(this.losDist ?? dist, wantD, wantD < (this.losDist ?? dist) ? 10 : 3, dt);
+    this.lift = damp(this.lift ?? 0, block, block > (this.lift ?? 0) ? 8 : 2, dt);
+    if (this.first) { this.losDist = wantD; this.lift = block; }
     px = sk.pos.x - _f.x * this.losDist; pz = sk.pos.z - _f.z * this.losDist;
     // keep the camera above terrain/surfaces
     const gy = this.cw.groundAt(px, pz, sk.pos.y + 3, 3).y;
-    let py = Math.max(sk.pos.y + height * (dist > 0 ? this.losDist / dist : 1) + 0.3, gy + 1.0);
+    const hh = height + (Math.max(height, 6.0) - height) * this.lift;
+    let py = Math.max(sk.pos.y + hh + 0.3, gy + 1.0);
     // during big air, don't chase every bounce upward — follow y softly
     const k = this.first ? 1 : 1 - Math.exp(-(sk.state === 'air' ? 4 : 9) * dt);
     this.pos.x += (px - this.pos.x) * (this.first ? 1 : 1 - Math.exp(-8 * dt));
     this.pos.z += (pz - this.pos.z) * (this.first ? 1 : 1 - Math.exp(-8 * dt));
     this.pos.y += (py - this.pos.y) * k;
     // look target ahead of the skater
-    const la = (portrait ? CFG.camLookAheadPortrait : CFG.camLookAhead) + sp * 0.12;
+    const la = ((portrait ? CFG.camLookAheadPortrait : CFG.camLookAhead) + sp * 0.12) * (1 - 0.55 * this.lift);   // lifted: look nearer, keep him mid-screen
     const lx = sk.pos.x + _f.x * la, ly = sk.pos.y + (portrait ? CFG.camLookYPortrait : 0.9) + (sk.state === 'air' ? 0.4 : 0), lz = sk.pos.z + _f.z * la;
     this.look.x += (lx - this.look.x) * (this.first ? 1 : 1 - Math.exp(-10 * dt));
     this.look.y += (ly - this.look.y) * (this.first ? 1 : 1 - Math.exp(-6 * dt));
