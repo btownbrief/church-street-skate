@@ -65,7 +65,7 @@ function paintTitle() {
 async function boot() {
   try {
     world = await buildWorld({ scene, renderer, camera, quality });
-  } catch (e) { console.error(e); $('#run-label').textContent = 'Something broke while building the city'; $('#run-line').textContent = e.message; throw e; }
+  } catch (e) { console.error(e); if (window.__bootFail) window.__bootFail(); throw e; }
   window.__world = world;
   const sp = world.spawn;
   skater = new Skater(world.collide, sp); skater.spots = world.spots;
@@ -78,6 +78,7 @@ async function boot() {
   hud.toggleMap(!touch && storeGet('css-map') !== '0');
   hud.el.btnPause.addEventListener('click', () => setPaused(true));
   input.bindTouch({ stickZone: $('#stick-zone'), stickKnob: $('#stick-knob'), buttons: { ollie: $('#b-ollie'), trick: $('#b-trick') } });
+  window.__booted = true;
   paintTitle();
   $('#btn-play').disabled = false; $('#btn-run').disabled = false;
   renderer.render(scene, camera);
@@ -114,11 +115,11 @@ function start(m = 'free') {
     const L = day.line, gy = world.collide.groundAt(L.start[0], L.start[1], 200, 300).y;
     skater.resetScore(); skater.respawn(L.start[0], gy + 0.02, L.start[1], L.start[2]); follow.reset(skater); locTimer = 0;
     // two letter layouts per line, alternating run by run (A on odd runs, B on even)
-    if (world.letters) world.letters.setRun(day.layout && L.lettersB ? L.lettersB : L.letters, L.name, L.start);
+    if (world.letters) world.letters.setRun(day.layout && L.lettersB ? L.lettersB : L.letters, L.name, L.start, L.gold);
     goals = new GoalTracker(day.goals);
     hud.setGoals(day.goals, goals.done); hud.showBest = false;
     hud.shownScore = 0; hud.el.score.textContent = '0';
-    hud.callout(L.name.toUpperCase(), 'follow the light · push to start the clock', 'line');
+    hud.callout(L.name.toUpperCase(), 'follow the light · push to start the clock', 'line', 2.4);
   } else {
     goals = null; hud.setGoals(null); hud.showBest = true; skater.scoreLocked = false;
     if (world.letters && world.letters.run) world.letters.setWeek();
@@ -194,7 +195,7 @@ function setPaused(p) {
   } else { last = performance.now(); ticker(false); }
 }
 $('#btn-play').addEventListener('click', () => start('free'));
-$('#btn-run').addEventListener('click', () => start('run'));
+$('#btn-run').addEventListener('click', () => { if (world && window.__booted) start('run'); });
 $('#btn-again').addEventListener('click', () => start('run'));
 $('#btn-free').addEventListener('click', () => start('free'));
 $('#btn-resume').addEventListener('click', () => setPaused(false));
@@ -207,6 +208,28 @@ $('#btn-map-toggle').addEventListener('click', () => { const on = hud.toggleMap(
 window.addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 renderer.setSize(innerWidth, innerHeight);
 document.addEventListener('visibilitychange', () => { if (document.hidden && running && !paused && !runOver) setPaused(true); });
+
+// ---- the edge chevron: one arrow at the side of the screen when the next letter is off
+// screen or behind you (the light only helps if you can see it)
+const _cv = new THREE.Vector3(); let chevOn = false;
+function paintChevron() {
+  const el = $('#chev'), L = world.letters, nx = L && L.next;
+  let show = false;
+  if (mode === 'run' && !runOver && nx) {
+    _cv.set(nx.x, nx.y, nx.z).applyMatrix4(camera.matrixWorldInverse);
+    const behind = _cv.z > -0.5;
+    let onScreen = false;
+    if (!behind) { _cv.set(nx.x, nx.y, nx.z).project(camera); onScreen = Math.abs(_cv.x) < 0.94 && _cv.y > -1 && _cv.y < 1.1; }
+    if (!onScreen) {
+      _cv.set(nx.x, nx.y, nx.z).applyMatrix4(camera.matrixWorldInverse);
+      const right = _cv.x >= 0;
+      el.style.left = (right ? innerWidth - 24 : 24) + 'px'; el.style.top = Math.round(innerHeight * 0.44) + 'px';
+      el.style.transform = `rotate(${right ? 0 : 180}deg)`; el.classList.toggle('gold', !!L.set);
+      show = true;
+    }
+  }
+  if (show !== chevOn) { chevOn = show; el.classList.toggle('on', show); }
+}
 
 // ---- first-play coach ---------------------------------------------------------------------
 // Three prompts, one at a time, each with its control pulsing; each clears when you do it.
@@ -253,6 +276,21 @@ function backToLine() {
 }
 $('#btn-back').addEventListener('click', backToLine);
 
+// THE CHAIRLIFT: the bottom of a line's gold run. A quick cut through black puts you back at
+// the top, already rolling, and the run goes round again. Whatever combo you had is banked.
+function chairlift(ev) {
+  if (skater.combo.length && skater.state !== 'bail') skater.bankCombo();
+  const gy = world.collide.groundAt(ev.x, ev.z, 200, 300).y;
+  skater.respawn(ev.x, gy + 0.05, ev.z, ev.yaw);
+  skater.vel.set(-Math.sin(ev.yaw) * 7, 0, -Math.cos(ev.yaw) * 7);
+  follow.reset(skater);
+  if (world.letters.afterLift) world.letters.afterLift();
+  slowT = 0; offT = 0; showBack(false);
+  const f = $('#fade'); f.classList.remove('go'); void f.offsetWidth; f.classList.add('go');
+  hud.callout('CHAIRLIFT', 'back to the top · the run goes round again', 'line');
+  audio.handle({ type: 'spotFirst' });
+}
+
 function stepGame(dt, now) {
   input.poll();
   if (autopilot) autopilot(input, skater, dt);
@@ -264,6 +302,8 @@ function stepGame(dt, now) {
   if (input.map && mode === 'free') hud.toggleMap();
   // the clock starts when the player does something — nothing happens until they act
   if (mode === 'run' && !clockOn && !runOver && (input.throttle !== 0 || input.steer !== 0 || input.ollie || input.flipA || input.flipB || input.shove || input.dbl || input.grab)) clockOn = true;
+  // one bank can't be the whole run: capped near a third of the next medal up
+  if (mode === 'run') { const nm = MEDALS.find(m => m.at > skater.score); skater.bankCap = Math.round((nm ? nm.at : MEDALS[MEDALS.length - 1].at * 1.5) / 3); } else skater.bankCap = 0;
   skater.update(dt, input);
   world.confine(skater);
   world.update(dt, skater);
@@ -281,16 +321,18 @@ function stepGame(dt, now) {
     hud.handle(ev, skater); audio.handle(ev); chal.handle(ev, skater); if (evTap) evTap(ev, skater);
     if (goals && !runOver) goals.handle(ev);
     coachEvent(ev);
+    if (ev.type === 'stumble') { follow.kick(0.35); buzz(15); }
     if (ev.type === 'bail') { follow.kick(ev.why === 'wall' || ev.why === 'car' ? 1.2 : 0.7); buzz([30, 40, 30]); }
     if (ev.type === 'land') { if (ev.speed > 8) follow.kick(0.25); buzz(10); }
     if (ev.type === 'maple') { mesh.leafBurst(skater.pos); follow.kick(0.4); }
     if (ev.type === 'stomp') { mesh.stompBurst(skater.pos); follow.kick(0.5); buzz(25); hitPause = Math.max(hitPause, 0.12); }
     if (ev.type === 'gap') { follow.kick(0.3); if (ev.first) hitPause = Math.max(hitPause, 0.12); }
     if (ev.type === 'letter' && ev.run && mode === 'run' && !runOver) { skater.award(ev.pts); runLeft += ev.secs; clockOn = true; hud.bumpTimer(ev.secs); buzz(15); offT = 0; }
+    if (ev.type === 'lift' && mode === 'run' && !runOver) chairlift(ev);
   }
   skater.events.length = 0;
   // free skate has no run to reset trick staleness, so it wears off once a minute
-  if (mode === 'free') { freshT += dt; if (freshT > 60) { freshT = 0; skater.used.clear(); } }
+  if (mode === 'free') { freshT += dt; if (freshT > 60) { freshT = 0; skater.used.clear(); skater.rampUses.clear(); } }
   chal.update(dt, skater);
   // free-skate challenges still tick during a run, but they keep quiet: one voice at a time
   if (mode === 'run') chal.justDone.length = 0;
@@ -329,6 +371,7 @@ function stepGame(dt, now) {
     if (runLeft <= 0) endRun();
   }
   hud.update(dt, skater, mode === 'run' ? '' : curLoc);
+  paintChevron();
   audio.update(dt, skater);
   input.endFrame();
   return true;

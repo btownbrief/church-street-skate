@@ -28,6 +28,22 @@ export function seeThrough(mat) {
   return mat;
 }
 
+// NEAR CULL only (round 3): everything else standing on the street — pedestrians, carts,
+// lamps, glass, decals — is also not drawn within 2 m of the lens, so a sandwich board or a
+// passer-by brushing the camera never fills the bottom of the screen.
+export function nearCull(mat) {
+  if (!mat || mat.userData.seeThrough || mat.userData.nearCull) return mat;
+  mat.userData.nearCull = true;
+  const prev = mat.onBeforeCompile;
+  mat.onBeforeCompile = (sh, r) => {
+    if (prev) prev(sh, r);
+    sh.uniforms.uNearZ = U.uNearZ;
+    sh.fragmentShader = 'uniform float uNearZ;\n' + sh.fragmentShader.replace('void main() {', 'void main() {\n  if (gl_FragCoord.z < uNearZ) discard;');
+  };
+  mat.needsUpdate = true;
+  return mat;
+}
+
 const _p = new THREE.Vector3(), _q = new THREE.Vector3(), _sz = new THREE.Vector2(), _fw = new THREE.Vector3();
 // Call once per frame after the camera has moved, before rendering.
 export function updateHole(camera, renderer, pos, enabled = true) {

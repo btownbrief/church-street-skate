@@ -50,9 +50,13 @@ export class FollowCamera {
     this.pos.x += (px - this.pos.x) * (this.first ? 1 : 1 - Math.exp(-8 * dt));
     this.pos.z += (pz - this.pos.z) * (this.first ? 1 : 1 - Math.exp(-8 * dt));
     this.pos.y += (py - this.pos.y) * k;
+    // STANDING STILL (round 3): tilt up and look further down the street, so the first light
+    // and the road to it sit in view below the HUD instead of the bricks under his feet
+    const still = sp < 1.5 && sk.state === 'ride' ? 1 : 0;
+    this.idle = this.first ? still : damp(this.idle ?? still, still, still ? 1.5 : 3, dt);
     // look target ahead of the skater
-    const la = ((portrait ? CFG.camLookAheadPortrait : CFG.camLookAhead) + sp * 0.12) * (1 - 0.55 * this.lift);   // lifted: look nearer, keep him mid-screen
-    const lx = sk.pos.x + _f.x * la, ly = sk.pos.y + (portrait ? CFG.camLookYPortrait : 0.9) + (sk.state === 'air' ? 0.4 : 0), lz = sk.pos.z + _f.z * la;
+    const la = ((portrait ? CFG.camLookAheadPortrait : CFG.camLookAhead) + sp * 0.12 + this.idle * 6) * (1 - 0.55 * this.lift);   // lifted: look nearer, keep him mid-screen
+    const lx = sk.pos.x + _f.x * la, ly = sk.pos.y + (portrait ? CFG.camLookYPortrait : 0.9) + this.idle * (1 - this.lift) * 1.6 + (sk.state === 'air' ? 0.4 : 0), lz = sk.pos.z + _f.z * la;
     this.look.x += (lx - this.look.x) * (this.first ? 1 : 1 - Math.exp(-10 * dt));
     this.look.y += (ly - this.look.y) * (this.first ? 1 : 1 - Math.exp(-6 * dt));
     this.look.z += (lz - this.look.z) * (this.first ? 1 : 1 - Math.exp(-10 * dt));

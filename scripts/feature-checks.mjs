@@ -307,7 +307,7 @@ checks.run = async () => {
   report("Today's Line starts on the day's line, clock waits for input",
     /College Hill/.test(title) && r.started.line === 'College Hill' && r.timer0 === '1:30' && r.idle === 90 && r.chips === 3,
     `title "${title}", start ${r.started.pos}, clock ${r.timer0} → ${r.idle} s after 1 s idle, ${r.chips} goal chips`);
-  report('a letter adds 5 s and 500', r.letter.dt > 4.5 && r.letter.dScore >= 500, JSON.stringify(r.letter));
+  report('a letter adds 3 s and 500', r.letter.dt > 2.5 && r.letter.dScore >= 500, JSON.stringify(r.letter));
   report('Last Call doubles banks in the final 30 s', r.lastCall && r.bankMult === 2, `lastCall=${r.lastCall} bank mult=${r.bankMult}`);
   report("results show today's best + tomorrow's line", r.shown && /Tomorrow: City Hall/.test(r.res) && /today's best/.test(r.res) && /test-1/.test(r.daily || ''), r.res);
   report('run mode offers the leaderboard', r.lbVisible, `leaderboard panel visible=${r.lbVisible}`);
@@ -697,8 +697,8 @@ checks.goldline = async () => {
     out.nextGold = L.gold && L.gold !== g ? +Math.hypot(L.gold.x - g.x, L.gold.z - g.z).toFixed(1) : null;
     return out;
   });
-  report('after B-T-O-W-N the light turns gold and stays ahead', r.set === 1 && r.gold && r.gold.d > 30 && r.gold.d < 120 && r.beacon && /gold/.test(r.tray), JSON.stringify(r));
-  report('a gold letter pays +750 and +3 s, and lays the next', r.dScore >= 750 && r.dt > 2.5 && r.nextGold > 20, JSON.stringify({ dScore: r.dScore, dt: r.dt, nextGold: r.nextGold }));
+  report('after B-T-O-W-N the light turns gold and stays ahead', r.set === 1 && r.gold && r.gold.d > 12 && r.gold.d < 140 && r.beacon && /gold/.test(r.tray), JSON.stringify(r));
+  report('a gold letter pays +750 and +2 s, and lays the next', r.dScore >= 750 && r.dt > 1.5 && r.nextGold > 20, JSON.stringify({ dScore: r.dScore, dt: r.dt, nextGold: r.nextGold }));
 };
 checks.skip = async () => {
   await runPage(1);
@@ -740,13 +740,13 @@ checks.rotation = async () => {
     const t = m.today(); const g1 = t.goals.map(g => g.id), lay1 = t.layout;
     m.saveRun(t, 11000, [g1[0], g1[1]]);
     const t2 = m.today(); const g2 = t2.goals.map(g => g.id);
-    const res = m.saveRun(t2, 26000, []);
+    const res = m.saveRun(t2, 41000, []);
     const medals = JSON.parse(localStorage.getItem('css-medals') || '{}');
     return { g1, g2, lay1, lay2: t2.layout, medal: res.medal, best: medals.mall, sameLast: g1[2] === g2[2] };
   });
   report('cleared goals rotate out on the next run, the third stays', r.g1[0] !== r.g2[0] && r.g1[1] !== r.g2[1] && r.sameLast, JSON.stringify(r));
   report('letter layout alternates A/B by run', r.lay1 !== r.lay2, `layout ${r.lay1} → ${r.lay2}`);
-  report('medals: 26k is silver and is remembered per line', r.medal === 2 && r.best === 2, JSON.stringify({ medal: r.medal, stored: r.best }));
+  report('medals: 41k is silver and is remembered per line', r.medal === 2 && r.best === 2, JSON.stringify({ medal: r.medal, stored: r.best }));
   const t = await ev(() => { window.__T.setLeft(0.2); window.__sim(1.2); return document.querySelector('#res-medal').innerText.replace(/\n/g, ' '); });
   report('results name the next medal and the gap to it', /in [\d,]+/.test(t), t);
   await page.click('#btn-free'); await page.waitForTimeout(200);
@@ -768,6 +768,77 @@ checks.camwall = async () => {
   });
   const vh = await ev(() => innerHeight);
   report('camera never eats the screen next to a wall', Math.max(...r) < vh * 0.42, `skater heights ${r.join(', ')} px at ${vh} px tall`);
+};
+
+// ===== 2026-11-16 round 3: gold runs on skate spots, the chairlift, walls stumble, ladder ====
+// Every line: teleport letter to letter for 22 gold letters. Each must come off the line's own
+// run (never the street-walk fallback), sit within 6 m of a feature on at least 60%, be 30 m+
+// from the last (lift jumps aside), and the downhill runs must ride the chairlift back up.
+checks.goldruns = async () => {
+  const out = [];
+  for (const day of [0, 1, 2, 3, 4]) {
+    await runPage(day);
+    out.push(await ev(() => {
+      const L = window.__world.letters, W = window.__world, A = W.collide.all;
+      const segD = (x, z, ax, az, bx, bz) => { const ex = bx - ax, ez = bz - az, l2 = ex * ex + ez * ez; const t = l2 < 1e-9 ? 0 : Math.max(0, Math.min(1, ((x - ax) * ex + (z - az) * ez) / l2)); return Math.hypot(ax + ex * t - x, az + ez * t - z); };
+      const feat = (x, z) => { let f = 99; for (const r of A.ramps) { if (r.kind === 'sidewalk' || r.kind === 'brick' || r.name === 'Parked car') continue; f = Math.min(f, segD(x, z, r.ax, r.az, r.bx, r.bz) - r.w / 2); } for (const e of A.edges) { if (/Car roof|Lamp base|Bike rack/.test(e.name)) continue; f = Math.min(f, segD(x, z, e.ax, e.az, e.bx, e.bz)); } for (const s of W.spots) if (s.r <= 20) f = Math.min(f, Math.hypot(s.x - x, s.z - z) - Math.min(6, s.r)); return f; };
+      window.__sim(0.3, ['ArrowUp']);
+      for (const it of L.items) { window.__tp(it.x, it.z, Math.PI / 2, 0); window.__sim(0.1); }
+      let prev = null, n = 0, onRun = 0, onFeat = 0, minStep = 1e9, lifts = 0;
+      for (let i = 0; i < 22; i++) {
+        const g = L.next; if (!g) break;
+        n++; if (L.goldIdx >= 0) onRun++; if (feat(g.x, g.z) <= 6) onFeat++;
+        const laps = L.laps;
+        if (prev) minStep = Math.min(minStep, Math.hypot(g.x - prev.x, g.z - prev.z));
+        window.__tp(g.x, g.z, prev ? Math.atan2(-(g.x - prev.x), -(g.z - prev.z)) : 0, 8); window.__sim(0.15);
+        prev = L.laps !== laps ? null : { x: g.x, z: g.z }; if (L.laps !== laps) lifts++;
+      }
+      return { line: window.__T.state().line, n, onRun, onFeat, minStep: Math.round(minStep), lifts, loop: !!(L.goldRun && L.goldRun.loop) };
+    }));
+  }
+  const ok = out.every(o => o.n === 22 && o.onRun === o.n && o.onFeat / o.n >= 0.6 && o.minStep >= 30 && (o.loop || o.lifts >= 1));
+  report('gold letters come off each line\'s own run of skate spots', ok, JSON.stringify(out));
+  await page.click('#btn-free').catch(() => {}); await page.waitForTimeout(100);
+};
+// Walls: a hard glancing hit or a head-on under 14 m/s is a stumble (half speed, combo gone,
+// still riding); head-on at 14+ m/s still bails, and the get-up faces away from the wall.
+checks.walls = async () => {
+  const r = await ev(() => {
+    const W = window.__world, A = W.collide.all;
+    // a long straight building wall with open ground in front of it
+    const w = A.walls.find(w => w.top > 3 && Math.hypot(w.bx - w.ax, w.bz - w.az) > 14 && (() => { const mx = (w.ax + w.bx) / 2, mz = (w.az + w.bz) / 2, ex = w.bx - w.ax, ez = w.bz - w.az, l = Math.hypot(ex, ez); for (const s of [1, -1]) { const nx = -ez / l * s, nz = ex / l * s, px = mx + nx * 12, pz = mz + nz * 12; if (W.collide.raycastWalls(px, pz, mx + nx * 0.5, mz + nz * 0.5, W.collide.groundAt(px, pz, 500, 1000).y + 1) >= 0.99) return true; } return false; })());
+    const mx = (w.ax + w.bx) / 2, mz = (w.az + w.bz) / 2, ex = w.bx - w.ax, ez = w.bz - w.az, l = Math.hypot(ex, ez);
+    let nx = -ez / l, nz = ex / l; if (W.collide.raycastWalls(mx + nx * 12, mz + nz * 12, mx + nx * 0.5, mz + nz * 0.5, W.collide.groundAt(mx + nx * 12, mz + nz * 12, 500, 1000).y + 1) < 0.99) { nx = -nx; nz = -nz; }
+    const hit = (sp, deg) => {
+      const a = deg * Math.PI / 180, dx = -nx * Math.cos(a) + (ex / l) * Math.sin(a), dz = -nz * Math.cos(a) + (ez / l) * Math.sin(a);
+      const yaw = Math.atan2(-dx, -dz);
+      window.__tp(mx - dx * 6, mz - dz * 6, yaw, sp); window.__recOn();
+      let res = null;
+      for (let i = 0; i < 90 && !res; i++) { window.__sim(1 / 60); const e = window.__rec.find(e => e.type === 'bail' || e.type === 'stumble'); if (e) res = e.type; }
+      const d = window.__dbg(); let out = { res: res || 'none', state: d.state };
+      if (res === 'bail') { window.__sim(2.5); const d2 = window.__dbg(); const f = [-Math.sin(d2.yaw), -Math.cos(d2.yaw)]; out.facesAway = f[0] * nx + f[1] * nz > 0.7; out.state = d2.state; }
+      window.__recOff(); return out;
+    };
+    return { wall: w.name, slow: hit(11, 0), glance: hit(18, 60), hard: hit(17, 0) };
+  });
+  report('walls: 11 m/s head-on and 18 m/s glancing are stumbles, not bails', r.slow.res === 'stumble' && r.glance.res === 'stumble' && r.slow.state !== 'bail', JSON.stringify(r));
+  report('walls: 17 m/s head-on bails, and you get up facing away', r.hard.res === 'bail' && r.hard.facesAway && r.hard.state === 'ride', JSON.stringify(r.hard));
+};
+// The same launch ramp pays less each send within a run; a run caps any single bank.
+checks.ladder = async () => {
+  const r = await ev(async () => {
+    const m = await import('/js/daily.js');
+    const k = window.__world.collide.all.ramps.find(rr => rr.name === 'Main St mega kicker'), yaw = Math.atan2(-k.ux, -k.uz);
+    // what the air off the ramp is worth: the wear factor on each of three sends, and the
+    // trick points with staleness forgotten (so only the ramp's wear can change them)
+    const send = () => { window.__freshen(); window.__tp(k.ax - k.ux * 25, k.az - k.uz * 25, yaw, 20); window.__recOn(); let pts = 0, wear = 1, air = false;
+      for (let i = 0; i < 400; i++) { const d = window.__dbg(); if (d.state === 'air') { air = true; wear = Math.min(wear, d.wear); if (i % 9 === 0) window.__press('KeyJ'); } window.__sim(1 / 60); }
+      for (const e of window.__rec) if (e.type === 'trick') pts += e.pts; window.__recOff(); return { air, wear, pts }; };
+    const a = send(), b = send(), c = send();
+    return { a, b, c, medals: m.MEDALS.map(x => x.at) };
+  });
+  report('the same launch ramp pays ×1, ×0.5, ×0.25 in a session', r.a.air && r.a.wear === 1 && r.b.wear === 0.5 && r.c.wear === 0.25 && r.b.pts < r.a.pts, JSON.stringify(r));
+  report('medal ladder is 15k / 40k / 80k / 130k', JSON.stringify(r.medals) === '[15000,40000,80000,130000]', JSON.stringify(r.medals));
 };
 
 const all = want.length ? want : Object.keys(checks);

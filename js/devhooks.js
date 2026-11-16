@@ -168,6 +168,6 @@ export function installDev(api) {
     score: skater.score, combo: skater.combo.map(t => t.name), loc: api.getLoc(), ground: skater.groundKind,
     why: skater.bail ? skater.bail.why : null,
     flow: +skater.flow.toFixed(3), special: +skater.special.toFixed(3), bestWreck: skater.session.bestWreck,
-    drawCalls: renderer.info.render.calls, tris: renderer.info.render.triangles,
+    drawCalls: renderer.info.render.calls, tris: renderer.info.render.triangles, wear: skater._airWear,
   });
 }

@@ -20,13 +20,20 @@ body:not(.playing) #hud, body:not(.playing) #touch { display:none !important; }
 #timer { font-family:var(--display); font-size:42px; line-height:.9; font-variant-numeric:tabular-nums; opacity:0; transition:opacity .2s, color .2s; }
 #timer.on { opacity:1; }
 #timer.low { color:var(--red); animation: tick 1s steps(1) infinite; }
-#timer.plus { animation: plus .5s ease-out; }
+#timer { position:relative; }
+#timer.plus #timer-t { display:inline-block; animation: plus .5s ease-out; }
+/* the seconds a letter gave back, beside the clock (it used to be a card over the light) */
+#timer-plus { position:absolute; left:100%; top:4px; margin-left:6px; font-size:22px; color:#8ff0a8; opacity:0; white-space:nowrap; text-shadow:0 2px 8px rgba(0,0,0,.7); }
+#timer-plus.go { animation: plusSec .9s ease-out forwards; }
+@keyframes plusSec { 0% { opacity:0; transform:translateY(6px); } 15% { opacity:1; transform:translateY(0); } 70% { opacity:1; } 100% { opacity:0; transform:translateY(-8px); } }
 @keyframes plus { 0% { transform:scale(1.35); color:#8ff0a8; } 100% { transform:scale(1); } }
 @keyframes tick { 50% { opacity:.55; } }
 #letters { display:flex; gap:6px; margin-top:3px; }
 #letters b { font-family:var(--display); font-size:17px; letter-spacing:.04em; font-weight:400; color:rgba(255,255,255,.72); width:17px; height:20px; line-height:20px; text-align:center; border-radius:4px; background:rgba(10,14,20,.45); }
 #letters b.got { color:#2b1706; background:var(--accent); text-shadow:none; }
 #letters b.miss { opacity:.35; text-decoration:line-through; background:none; }
+#letters b.flash { animation: tileFlash .6s ease-out; }
+@keyframes tileFlash { 0% { transform:scale(1.7); box-shadow:0 0 14px 4px rgba(255,216,77,.9); } 100% { transform:scale(1); } }
 #letters b.next { color:#fff; box-shadow:inset 0 0 0 1.5px rgba(255,240,168,.9); animation: tick 1.2s ease-in-out infinite; }
 #letters.gold b { color:#ffcf6a; }
 #letters.gold b.got { background:linear-gradient(#ffe48a,#f09a1e); color:#3a1a00; }
@@ -73,7 +80,7 @@ body.run #hud-loc { display:none; }
 #popups .pop.bail { color:var(--red); font-size:26px; }
 #popups .pop.sk { color:#ffb347; font-size:18px; }
 @keyframes popUp { 0% { opacity:0; transform:translate(-50%,-30%) scale(.6);} 9% { opacity:1; transform:translate(-50%,-50%) scale(1.1);} 80% { opacity:1; transform:translate(-50%,-70%) scale(1);} 100% { opacity:0; transform:translate(-50%,-110%) scale(1);} }
-#callout { position:absolute; left:50%; top:24%; transform:translate(-50%,0) scale(.9); background:rgba(181,85,47,.94); color:#fff; padding:8px 18px 9px; border-radius:12px; text-align:center; opacity:0; transition: opacity .2s, transform .2s; box-shadow:0 8px 30px rgba(0,0,0,.4); max-width:88vw; text-shadow:none; }
+#callout { position:absolute; left:50%; top:calc(114px + var(--safe-t)); transform:translate(-50%,0) scale(.9); background:rgba(181,85,47,.94); color:#fff; padding:8px 18px 9px; border-radius:12px; text-align:center; opacity:0; transition: opacity .2s, transform .2s; box-shadow:0 8px 30px rgba(0,0,0,.4); max-width:88vw; text-shadow:none; }
 #callout.on { opacity:1; transform:translate(-50%,0) scale(1); }
 #callout.goal { background:rgba(44,154,88,.95); }
 #callout.gold, #callout.letter { background:rgba(240,190,50,.96); color:#2b1706; }
@@ -113,6 +120,16 @@ body.co #coach.on { opacity:0; }
 body:not(.playing) .backpill { display:none; }
 #coach b { color:var(--accent); }
 body.lastcall #hud-top #timer { color:var(--red); }
+/* CHAIRLIFT: a quick cut through black back to the top of the run */
+#fade { position:fixed; inset:0; z-index:6; background:#0a0e14; opacity:0; pointer-events:none; }
+#fade.go { animation: liftFade .55s ease-out; }
+@keyframes liftFade { 0% { opacity:1; } 35% { opacity:1; } 100% { opacity:0; } }
+/* one chevron at the screen edge when the next letter is off screen or behind you */
+#chev { position:fixed; z-index:4; left:0; top:0; width:34px; height:34px; margin:-17px 0 0 -17px; pointer-events:none; opacity:0; transition:opacity .2s; }
+#chev.on { opacity:1; }
+#chev::before { content:''; position:absolute; inset:5px; border-top:6px solid #ffd84d; border-right:6px solid #ffd84d; border-radius:3px; transform:rotate(45deg); filter:drop-shadow(0 1px 3px rgba(0,0,0,.8)); }
+#chev.gold::before { border-color:#ffb627; }
+body:not(.run) #chev { display:none; }
 
 /* ---------------- screens ---------------- */
 .screen { position:fixed; inset:0; z-index:10; display:none; align-items:center; justify-content:center; background:linear-gradient(180deg, rgba(12,18,28,.55), rgba(12,18,28,.92)); padding:16px; }
@@ -177,15 +194,17 @@ summary { cursor:pointer; font-size:13px; font-weight:700; padding:8px 0; color:
 .medal.m1 b { background:#a8683a; border-color:#d39463; color:#fff; }
 .medal.m2 b { background:#aeb6c2; border-color:#e3e8ee; color:#1b2230; }
 .medal.m3 b { background:linear-gradient(#ffe27a,#e2a42a); border-color:#fff0b0; color:#3a2000; }
+.medal.m4 b { background:linear-gradient(#ffffff,#9fd8f0); border-color:#e6fbff; color:#0c2a38; }
 .lines { display:flex; justify-content:center; gap:10px; margin:2px 0 6px; flex-wrap:wrap; }
 .lines .ld { display:flex; flex-direction:column; align-items:center; gap:3px; font-size:9.5px; letter-spacing:.04em; opacity:.6; width:52px; }
 .lines .ld i { width:14px; height:14px; border-radius:50%; background:rgba(255,255,255,.12); border:1.5px solid rgba(255,255,255,.35); }
-.lines .ld.m1, .lines .ld.m2, .lines .ld.m3 { opacity:.92; }
+.lines .ld.m1, .lines .ld.m2, .lines .ld.m3, .lines .ld.m4 { opacity:.92; }
 .lines .ld.today { opacity:1; color:var(--accent); }
 .lines .ld.today i { box-shadow:0 0 0 3px rgba(255,216,77,.45); }
 .lines .ld.m1 i { background:#b8743f; border-color:#d39463; }
 .lines .ld.m2 i { background:#c9d0da; border-color:#eef2f6; }
 .lines .ld.m3 i { background:#f2c140; border-color:#fff0b0; }
+.lines .ld.m4 i { background:linear-gradient(#ffffff,#9fd8f0); border-color:#e6fbff; box-shadow:0 0 6px rgba(160,230,255,.8); }
 .tomorrow { font-size:13px; margin:0 0 14px; color:var(--accent); opacity:.9; }
 
 /* ---------------- leaderboard (fleet style) ---------------- */

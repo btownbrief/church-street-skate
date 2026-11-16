@@ -5,7 +5,7 @@
 import { clamp } from './util.js';
 import { CFG } from './config.js';
 
-const CALLOUT_T = 1.6;            // seconds each queued callout stays up
+const CALLOUT_T = 1.0;            // seconds each queued card stays up (under the goal chips, off the street)
 
 export class Hud {
   constructor(root, worldInfo) {
@@ -15,7 +15,7 @@ export class Hud {
         <div id="hud-score"><div id="score-val">0</div><div id="best-val"></div>
           <div class="meter" id="m-special"><i></i></div>
         </div>
-        <div id="hud-mid"><div id="timer"></div><div id="letters"></div><div id="goals"></div></div>
+        <div id="hud-mid"><div id="timer"><span id="timer-t"></span><span id="timer-plus"></span></div><div id="letters"></div><div id="goals"></div></div>
         <div id="hud-right"><button id="btn-map" class="pill" aria-label="Map">MAP</button><button id="btn-pause" class="pill" aria-label="Pause">II</button></div>
       </div>
       <div id="hud-loc"><span id="loc-name"></span></div>
@@ -28,7 +28,7 @@ export class Hud {
       <div id="speed"></div>`;
     const q = (s) => root.querySelector(s);
     this.el = { score: q('#score-val'), best: q('#best-val'), loc: q('#loc-name'), locBox: q('#hud-loc'), combo: q('#combo'), comboTricks: q('#combo-tricks'), comboTotal: q('#combo-total'), balance: q('#balance'), knob: q('#balance-knob'), popups: q('#popups'), callout: q('#callout'), map: q('#minimap'), speed: q('#speed'), btnMap: q('#btn-map'), btnPause: q('#btn-pause'),
-      special: q('#m-special > i'), mSpecial: q('#m-special'), letters: q('#letters'), timer: q('#timer'), goals: q('#goals'),
+      special: q('#m-special > i'), mSpecial: q('#m-special'), letters: q('#letters'), timer: q('#timer'), timerT: q('#timer-t'), timerPlus: q('#timer-plus'), goals: q('#goals'),
       charge: q('#charge'), chargeFill: q('#charge > i'), chargeBonus: q('#charge > b') };
     this.shownScore = 0; this.mapOn = true; this.comboFlash = 0; this._lastLoc = ''; this._locT = 0;
     this._special = -1; this._lettersKey = ''; this._timerTxt = ''; this.showBest = true;
@@ -39,15 +39,18 @@ export class Hud {
   }
   toggleMap(on) { this.mapOn = on === undefined ? !this.mapOn : on; this.el.map.style.display = this.mapOn ? '' : 'none'; return this.mapOn; }
 
+  // One popup at a time in the centre: a new one (a BAIL, a bank) replaces the last, never
+  // stacks on top of it.
   popup(text, cls = '', x = 50, y = 38) {
+    this.el.popups.innerHTML = '';
     const d = document.createElement('div'); d.className = 'pop ' + cls; d.textContent = text; d.style.left = x + '%'; d.style.top = y + '%';
     this.el.popups.appendChild(d); setTimeout(() => d.remove(), 2600);
     while (this.el.popups.children.length > 4) this.el.popups.firstChild.remove();
   }
   // One callout at a time, each up for 1.6 s; the rest wait their turn. `cls` tints it.
-  callout(title, sub, cls = '') {
-    if (this.queue.length >= 3) this.queue.shift();         // never fall seconds behind the action
-    this.queue.push({ title, sub, cls });
+  callout(title, sub, cls = '', secs = CALLOUT_T) {
+    if (this.queue.length >= 2) this.queue.shift();         // never fall seconds behind the action
+    this.queue.push({ title, sub, cls, secs });
     if (this._calloutT <= 0) this._nextCallout();
   }
   _nextCallout() {
@@ -57,7 +60,7 @@ export class Hud {
     el.className = 'on ' + c.cls;
     el.innerHTML = `<div class="ct"></div>${c.sub ? '<div class="cs"></div>' : ''}`;
     el.querySelector('.ct').textContent = c.title; if (c.sub) el.querySelector('.cs').textContent = c.sub;
-    this._calloutT = CALLOUT_T;
+    this._calloutT = c.secs || CALLOUT_T;
   }
   clearCallouts() { this.queue.length = 0; this._calloutT = 0; this.el.callout.className = ''; this.el.popups.innerHTML = ''; document.body.classList.remove('co'); }
 
@@ -67,20 +70,22 @@ export class Hud {
       case 'bank': {
         // the payoff scales with the bank: small banks are small, big ones are BIG
         const cls = ev.total >= 5000 ? 'bank mega' : ev.total >= 2000 ? 'bank big' : ev.total >= 500 ? 'bank' : 'bank small';
-        this.popup(`+${ev.total.toLocaleString()}${ev.mult > 1 ? '  ×' + ev.mult : ''}`, cls, 50, 35);
-        if (ev.spot) this.callout(ev.spot, 'spot bonus');
+        this.popup(`+${ev.total.toLocaleString()}${ev.mult > 1 ? '  ×' + ev.mult : ''}${ev.capped ? '  MAX' : ''}`, cls, 50, 35);
         break;
       }
       case 'bail': this.popup(ev.lost > 0 ? `BAIL  −${ev.lost.toLocaleString()}` : 'BAIL', 'bail', 50, 34); break;
       case 'spotFirst': this.callout(`NEW SPOT: ${ev.name}`, `+${ev.bonus} · ${sk.spotsHit.size}/${sk.spots.length} Burlington spots`); break;
       case 'land': if (ev.sketchy) this.popup('sketchy', 'sk', 50, 44); break;
       case 'stomp': this.popup('STOMPED!', 'stomp', 50, 40); break;
-      case 'gap': this.callout(ev.name.toUpperCase(), ev.first ? `NEW GAP · +${ev.pts}` : `+${ev.pts}`, 'gap'); break;
+      case 'gap': if (ev.first) this.callout(ev.name.toUpperCase(), `NEW GAP · +${ev.pts}`, 'gap'); break;
       case 'revert': this.popup('revert', 'sk', 50, 46); break;
-      case 'maple': this.callout('THE MAPLE LEAF', 'signature trick', 'gold'); break;
+      case 'maple': this.popup('THE MAPLE LEAF', 'stomp', 50, 40); break;
+      case 'stumble': if (ev.lost > 0) this.popup(`STUMBLE  −${ev.lost.toLocaleString()}`, 'sk', 50, 40); break;
       case 'letter':
         if (!ev.run) { this.callout(ev.ch, `B-T-O-W-N · ${ev.n}/${ev.total}`, 'letter'); break; }
-        this.callout(`${ev.gold ? 'GOLD ' : ''}${ev.ch}   +${ev.secs}s`, `${ev.gold ? 'gold set ' + ev.set + ' · ' : 'B-T-O-W-N '}${ev.n}/${ev.total} · +${ev.pts.toLocaleString()}`, 'letter');
+        // a run letter gets no card (it used to sit right on top of the next light): its tray
+        // tile flashes and the seconds show beside the clock
+        this._flashCh = ev.ch; this._lettersKey = '';
         break;
       case 'letters': this.callout(ev.set ? `GOLD BTOWN ×${ev.set + 1}` : 'BTOWN!', `${ev.set ? 'a full gold set' : 'all five letters'} · +${ev.pts.toLocaleString()}`, 'gold'); break;
     }
@@ -88,14 +93,17 @@ export class Hud {
 
   // TODAY'S LINE clock. main.js owns the timer; the HUD only renders what it is handed.
   setTimer(sec, lastCall = false) {
-    if (sec == null) { if (this._timerTxt !== '') { this._timerTxt = ''; this.el.timer.textContent = ''; this.el.timer.classList.remove('on', 'low'); } return; }
+    if (sec == null) { if (this._timerTxt !== '') { this._timerTxt = ''; this.el.timerT.textContent = ''; this.el.timer.classList.remove('on', 'low'); } return; }
     const s = Math.max(0, Math.ceil(sec));
     const txt = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-    if (txt !== this._timerTxt) { this._timerTxt = txt; this.el.timer.textContent = txt; }
+    if (txt !== this._timerTxt) { this._timerTxt = txt; this.el.timerT.textContent = txt; }
     this.el.timer.classList.add('on');
     this.el.timer.classList.toggle('low', lastCall);
   }
-  bumpTimer(_secs) { const t = this.el.timer; t.classList.remove('plus'); void t.offsetWidth; t.classList.add('plus'); }
+  bumpTimer(secs) {
+    const t = this.el.timer, p = this.el.timerPlus; p.textContent = `+${secs}s`;
+    t.classList.remove('plus'); p.classList.remove('go'); void t.offsetWidth; t.classList.add('plus'); p.classList.add('go');
+  }
   // three chips under the clock; they turn green as the run clears them
   setGoals(goals, done) {
     if (!goals) { this.el.goals.innerHTML = ''; return; }
@@ -118,7 +126,8 @@ export class Hud {
       const deg = Math.floor(Math.abs(sk.spinAccum) / Math.PI * 180 / 10) * 10;
       liveName = (sk.spinAccum > 0 ? 'FS ' : 'BS ') + deg + '°'; livePts = 0;
     }
-    if (nReal || liveName) {
+    const anyPts = sum + livePts > 0;
+    if ((nReal || liveName) && anyPts) {
       // FRESH tricks (first time this run) glow green and pay ×1.5; worn-out ones fade
       const parts = [];
       for (const t of sk.combo) if (!t.silent) parts.push(t);
@@ -151,7 +160,8 @@ export class Hud {
       if (key !== this._lettersKey) {
         this._lettersKey = key;
         this.el.letters.classList.toggle('gold', set > 0);
-        this.el.letters.innerHTML = L.all.map(c => `<b class="${L.got.has(c) ? 'got' : miss.has(c) ? 'miss' : c === nx ? 'next' : ''}">${c}</b>`).join('') + (set > 0 ? `<i>×${set + 1}</i>` : '');
+        const fl = this._flashCh; this._flashCh = null;
+        this.el.letters.innerHTML = L.all.map(c => `<b class="${L.got.has(c) ? 'got' : miss.has(c) ? 'miss' : c === nx ? 'next' : ''}${c === fl && L.got.has(c) ? ' flash' : ''}">${c}</b>`).join('') + (set > 0 ? `<i>×${set + 1}</i>` : '');
       }
     }
     // OLLIE CHARGE bar: yellow = how loaded the pop is, green = the extra the current speed adds

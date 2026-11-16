@@ -1,7 +1,7 @@
 // TODAY'S LINE — the daily run. Pure logic + persistence, no DOM and no three.js.
 //
 // Five lines through town, one per day (local date), each with its own start, its own five
-// B-T-O-W-N letters (the breadcrumbs: +500 and +5 s each) and three goals drawn from a pool
+// B-T-O-W-N letters (the breadcrumbs: +500 and +3 s each) and three goals drawn from a pool
 // by the date. Today's best, the all-time run best and a day streak are remembered.
 //
 // New localStorage keys only — `css-daily`, `css-streak`, `css-run-best`. The older keys
@@ -15,22 +15,40 @@ const W = Math.PI / 2, S = Math.PI, N = 0;     // yaw: west, south, north (fwd =
 
 // `lettersB` is the second layout of each line (over the kickers, the steps, the other side of
 // the street): runs alternate A, B, A, B… so Again is never the same line twice in a row.
+//
+// `gold` (2026-11-16, round 3) is where the light goes once the day's five are taken: a
+// hand-ordered run of skate features in the line's OWN neighbourhood — rails, kickers,
+// funboxes, steps, ledges, named spots — all downhill, 30–110 m apart. At the bottom the
+// chairlift (`top`) takes you back up and the run goes round again (a fade, the clock keeps
+// running). City Hall is flat, so its run is a loop round the park and needs no lift. The
+// five runs share no points with each other; letters.js only falls back to walking the
+// street graph if you wander far off the run.
 export const LINES = [
   { id: 'mall', name: 'Mall Bomb', blurb: 'Pearl to Main, all downhill brick',
     start: [-16.0, -352, S], letters: [[-14.0, -300], [-10.6, -215], [-5.6, -100], [-1.2, -20], [2.0, 62]],
-    lettersB: [[-14.2, -309], [-9.0, -196], [-6.3, -80.5], [-1.8, -34], [2.6, 64]], skip: ['car', 'car2'] },
+    lettersB: [[-14.2, -309], [-9.0, -196], [-6.3, -80.5], [-1.8, -34], [2.6, 64]], skip: ['car', 'car2'],
+    gold: { top: [-16, -385, S], pts: [[-20.6, -357], [-11.5, -320], [-14, -290], [-15.3, -259], [-13, -225], [-9.5, -195],
+      [-7.8, -164], [-5.6, -134], [-1.5, -104], [-3, -65], [-2, -35]] } },
   { id: 'college', name: 'College Hill', blurb: 'Church St to the lake, 21 m of drop',
     start: [-14, 3.5, W], letters: [[-60, 3.5], [-130, 7], [-220, 11], [-330, 16], [-450, 14]],
-    lettersB: [[-95, 1.5], [-175, 12], [-275, 9], [-390, 18], [-462, 10]], skip: [] },
+    lettersB: [[-95, 1.5], [-175, 12], [-275, 9], [-390, 18], [-462, 10]], skip: [],
+    gold: { top: [-50, 6, W], pts: [[-79.1, 11.4], [-130, 9], [-221, -1], [-285.4, 6.1], [-317, 9], [-360, 9], [-405, 9],
+      [-462, 10], [-523, 2], [-524, 38]] } },
   { id: 'cityhall', name: 'City Hall', blurb: 'the park, the fountain, the steps',
     start: [2, 16, S], letters: [[3, 50], [-6, 74], [-6, 100], [-3, 121], [-40, 121.5]],
-    lettersB: [[2.5, 64], [-8.9, 93], [4.7, 110.5], [-5.5, 124.7], [-53, 124]], skip: ['car', 'car2', 'mph45'] },
-  { id: 'waterfront', name: 'The Waterfront', blurb: 'Battery St to the Bluff Bomber',
-    start: [-490, -20, N], letters: [[-497, -80], [-505, -150], [-520, -300], [-537, -408], [-545, -444]],
-    lettersB: [[-500, -110], [-509, -210], [-527, -344], [-537, -394], [-537, -420]], skip: ['car', 'car2'] },
+    lettersB: [[2.5, 64], [-8.9, 93], [4.7, 110.5], [-5.5, 124.7], [-53, 124]], skip: ['car', 'car2', 'mph45'],
+    gold: { loop: true, pts: [[-57, 22], [-88, 30], [-82, 80], [-67, 112], [-38, 95], [-25, 122], [5, 116], [-8, 85], [3, 50], [0, 10]] } },
+  // Starts at Battery Park and runs DOWN Battery St (it used to start at the bottom facing uphill)
+  { id: 'waterfront', name: 'The Waterfront', blurb: 'Battery Park down Battery St',
+    start: [-545, -472, S], letters: [[-537, -408], [-520, -300], [-509, -210], [-497, -120], [-492, -45]],
+    lettersB: [[-537, -394], [-527, -344], [-510, -250], [-500, -170], [-494, -80]], skip: ['car', 'car2'],
+    gold: { top: [-545, -472, S], pts: [[-545, -456], [-545, -425], [-537, -394], [-527, -350], [-525, -290], [-536, -229],
+      [-515, -190], [-498, -150], [-548, -140], [-552, -46]] } },
   { id: 'main', name: 'Main Street', blurb: 'the long hill to the mega kicker',
     start: [-4, 130, W], letters: [[-40, 132], [-90, 133], [-140, 134], [-190, 135], [-245, 137]],
-    lettersB: [[-65, 135], [-115, 131], [-165, 136], [-215, 133], [-270, 138]], skip: [] },
+    lettersB: [[-65, 135], [-115, 131], [-165, 136], [-215, 133], [-270, 138]], skip: [],
+    gold: { top: [-100, 136, W], pts: [[-132, 140], [-175, 129], [-211.8, 132.8], [-262, 141], [-368, 145.5], [-411, 145.5],
+      [-448.5, 145.5], [-517.7, 144.5], [-545, 100]] } },
 ];
 
 // The goal pool, in three tiers: every run shows one of each. The day's order is seeded by
@@ -60,13 +78,16 @@ export const GOALS = [
   { id: 'goldset', tier: 2, name: 'Finish a gold B-T-O-W-N', chip: 'GOLD SET', hint: 'five gold letters after the first five' },
   { id: 'maple', tier: 2, name: 'Land The Maple Leaf', chip: 'MAPLE LEAF', hint: 'fill the gold bar, then double-tap TRICK in the air', key: 'fill the gold bar, then J + L in the air' },
 ];
-export const GOAL_PTS = 1500, ALL_GOALS_PTS = 5000, LETTER_PTS = 500, LETTER_SECS = 5;
+export const GOAL_PTS = 1500, ALL_GOALS_PTS = 5000, LETTER_PTS = 500, LETTER_SECS = 3;
 
 // MEDALS per line (2026-11-16 final): a next rung to climb on every line. New key `css-medals`.
+// Round 3: stretched so gold takes days, not one run (gold fell on run 1 on three lines at
+// 45k), plus a fourth rung. Stored values 1–3 keep their meaning.
 export const MEDALS = [
-  { id: 'bronze', name: 'Bronze', at: 10000 },
-  { id: 'silver', name: 'Silver', at: 25000 },
-  { id: 'gold', name: 'Gold', at: 45000 },
+  { id: 'bronze', name: 'Bronze', at: 15000 },
+  { id: 'silver', name: 'Silver', at: 40000 },
+  { id: 'gold', name: 'Gold', at: 80000 },
+  { id: 'plat', name: 'Platinum', at: 130000 },
 ];
 export const medalFor = (score) => { let m = 0; for (let i = 0; i < MEDALS.length; i++) if (score >= MEDALS[i].at) m = i + 1; return m; };
 
@@ -116,7 +137,7 @@ export function loadDaily(t) {
     streak: streakNow(t),
   };
 }
-// best medal per line id (0 none, 1 bronze, 2 silver, 3 gold)
+// best medal per line id (0 none, 1 bronze, 2 silver, 3 gold, 4 platinum)
 export function loadMedals() { const m = readJSON('css-medals', {}); return m && typeof m === 'object' ? m : {}; }
 
 // The streak counts consecutive days with at least one finished run. Shown as of today:

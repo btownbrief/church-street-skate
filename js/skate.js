@@ -11,6 +11,7 @@ const v0 = (v) => Math.hypot(v.x, v.z);
 // STALENESS: the same trick done again pays less. First use ×1.5 (FRESH), then ×1, ×0.7,
 // ×0.45, ×0.25, floor ×0.1. Reset each run (and each minute in free skate).
 const STALE = [1.5, 1.0, 0.7, 0.45, 0.25, 0.1];
+const RAMP_WEAR = [1, 0.5, 0.25];   // the same launch ramp, 1st / 2nd / 3rd+ send in a run
 
 export class Skater {
   constructor(collide, spawn) {
@@ -40,7 +41,7 @@ export class Skater {
     this.bankedThisLanding = 0; this.session = { tricks: 0, bails: 0, bestCombo: 0, grindTime: 0, topSpeed: 0, dist: 0, bestWreck: 0, wrecks: 0, gaps: 0 };
     this.events = []; this.spots = []; this.spotsHit = new Set();
     this.stats = { clean: 0 };
-    this._acc = 0; this.wallHitCooldown = 0; this.sketchy = 0;
+    this._acc = 0; this.wallHitCooldown = 0; this.sketchy = 0; this._graceT = 0; this._wallN = null; this._airWear = 1; this.rampUses = new Map(); this.bankCap = 0;
     this.input = null; this.t = 0; this.bankMult = 1; this.used = new Map(); this._slowPop = false; this._airFromLaunch = false; this._takeoffY = 0;
     this.lean = 0;                       // visual lean from steering
     this.hitboxR = CFG.skaterRadius;
@@ -82,11 +83,12 @@ export class Skater {
     P.flipA = P.flipB = P.shove = P.dbl = P.olliePressed = P.ollieReleased = P.ollieCancel = false;
     if (this.grindCooldown > 0) this.grindCooldown -= dt;
     if (this.wallHitCooldown > 0) this.wallHitCooldown -= dt;
+    if (this._graceT > 0) this._graceT -= dt;
     // A charge can only be released on the ground or a grind. If the board left the ground
     // (rolled off a kicker lip) while OLLIE was held, letting go in the air must still end the
     // charge — otherwise `charging` stuck true froze pushing and banking for the whole run.
     if ((ev.ollieReleased || ev.ollieCancel) && (this.state === 'air' || this.state === 'bail')) { this.charging = false; this.charge = 0; }
-    this.session.topSpeed = Math.max(this.session.topSpeed, this.vel.length());
+    this.session.topSpeed = Math.max(this.session.topSpeed, Math.hypot(this.vel.x, this.vel.z));   // rolling speed, not falling speed
     switch (this.state) {
       case 'ride': this.stepRide(dt, inp, ev, false); break;
       case 'manual': this.stepRide(dt, inp, ev, true); break;
@@ -139,7 +141,7 @@ export class Skater {
     this._coyote = null; this.state = 'air'; this.onGround = false; this.vel.y = vy; this.pos.y += 0.03; this.airTime = 0; this.airPeak = this.pos.y; this.spinAccum = 0; this.yawVel = 0; this.crouch = 0; this.charging = false;
     this._airFlips = 0; this._airFlipName = null;
     // a flat-ground ollie is not Big Air, and a trick popped standing still pays a quarter
-    this._slowPop = Math.hypot(this.vel.x, this.vel.z) < 3; this._airFromLaunch = false; this._takeoffY = this.pos.y;
+    this._slowPop = Math.hypot(this.vel.x, this.vel.z) < 3; this._airFromLaunch = false; this._takeoffY = this.pos.y; this._airWear = 1;
     this.bodyFlip = null; this._bodyFlips = 0;
     this._backHeld = inp ? inp.throttle < -0.5 : false;  // holding brake through takeoff ≠ asking for a backflip
     this.emit('pop', { vy });
@@ -226,6 +228,9 @@ export class Skater {
           v.y = vyL;
           v.multiplyScalar(sp0 / Math.hypot(sp0, vyL));
           if (this.groundKind === 'quarter') { v.x *= 0.28; v.z *= 0.28; } // vert lip: go UP, hang, come back in
+          // the SAME launch ramp pays ×1, ×0.5, then ×0.25 within a run (the Main St mega was
+          // banking half a run in one send); the rest of the town is fresh
+          if (this.groundKind === 'ramp' && this.groundObj) { const n = this.rampUses.get(this.groundObj) || 0; this.rampUses.set(this.groundObj, n + 1); this._launchWear = RAMP_WEAR[Math.min(n, RAMP_WEAR.length - 1)]; }
           this.emit('launch', { vy: v.y, kind: this.groundKind });
         }
       }
@@ -234,6 +239,7 @@ export class Skater {
       // 0.15 s still pops (stepAir), so a late thumb isn't punished
       this._coyote = this.charging ? { t: this.t, charge: this.charge } : null;
       this._slowPop = false; this._airFromLaunch = v.y > 1.2; this._takeoffY = this.lastGround.y;
+      this._airWear = this._airFromLaunch ? (this._launchWear || 1) : 1; this._launchWear = 1;
       this._airFlips = 0; this._airFlipName = null; this.charging = false; this.charge = 0;
       return;
     }
@@ -245,10 +251,9 @@ export class Skater {
     if (hit) {
       const vn = v.x * hit.nx + v.z * hit.nz;
       if (vn < 0) {
-        // Cars never bail you (his call): riding into bodywork bounces, every speed
-        const isCar = hit.obj && hit.obj.kind === 'car';
-        if (!isCar && -vn > this.slamSpeed(hit.obj) && this.wallHitCooldown <= 0) { this._hitObj = hit.obj; this.startBail('wall'); return; }
-        v.x -= hit.nx * vn * 1.05; v.z -= hit.nz * vn * 1.05; this.wallHitCooldown = 0.3; if (-vn > 2) this.emit('bump', { speed: -vn });
+        const w = this.wallHit(hit, vn);
+        if (w === 'bail') return;
+        if (!w) { v.x -= hit.nx * vn * 1.05; v.z -= hit.nz * vn * 1.05; this.wallHitCooldown = 0.3; if (-vn > 2) this.emit('bump', { speed: -vn }); }
       }
     }
     // manual balance
@@ -273,6 +278,33 @@ export class Skater {
     this.onGround = true;
   }
 
+  // WALLS BOUNCE, THEY DON'T SLAM (round 3: walls were 81 of 123 bails, and the first-timer
+  // bailed on the same building three times in 8 s). Only a head-on hit (within 45° of
+  // square) at 14 m/s or more is a bail, and the get-up faces away from the wall, off it.
+  // Anything else hard enough to matter is a STUMBLE: you slide along the wall at half speed
+  // and lose the combo, but you stay on the board. Light touches bounce as they always did.
+  // Cars never bail you (his call): riding into bodywork bounces, every speed.
+  // Returns 'bail', 'stumble' or null (null: the caller bounces as before).
+  wallHit(hit, vn) {
+    const v = this.vel, isCar = hit.obj && hit.obj.kind === 'car';
+    if (isCar) return null;
+    const into = -vn, sp = Math.hypot(v.x, v.z);
+    const headOn = into > 0.707 * sp;
+    if (headOn && sp >= Math.max(14, this.slamSpeed(hit.obj)) && this.wallHitCooldown <= 0 && this._graceT <= 0) {
+      this._hitObj = hit.obj; this._wallN = { x: hit.nx, z: hit.nz }; this.startBail('wall'); return 'bail';
+    }
+    if (into > 5 && this.wallHitCooldown <= 0) {
+      v.x -= hit.nx * vn * 1.02; v.z -= hit.nz * vn * 1.02;          // slide along it
+      v.x *= 0.5; v.z *= 0.5;
+      const lost = this.comboValue();
+      if (this.state === 'manual') { this.manual = null; this.balance = 0; this.state = 'ride'; }
+      this.combo = []; this.comboPending = 0;
+      this.wallHitCooldown = 0.45;
+      this.emit('stumble', { lost, speed: into }); this.emit('bump', { speed: into });
+      return 'stumble';
+    }
+    return null;
+  }
   // How hard you must hit something to slam. Building walls and tall solid things: 9 m/s
   // into them. Low skate furniture (benches, planters, ledges, kickers' sides) only slams at
   // 13 m/s — below that you bounce off it, because riding into a ledge is what skaters do.
@@ -397,7 +429,7 @@ export class Skater {
     // walls
     const hit = cw.resolveWalls(p, this.hitboxR, p.y, p.y + 1.6);
     this.softProp(cw.softHit);
-    if (hit) { const vn = v.x * hit.nx + v.z * hit.nz; if (vn < 0) { const isCar = hit.obj && hit.obj.kind === 'car'; if (!isCar && -vn > this.slamSpeed(hit.obj)) { this._hitObj = hit.obj; this.startBail('wall'); return; } v.x -= hit.nx * vn * 1.2; v.z -= hit.nz * vn * 1.2; } }
+    if (hit) { const vn = v.x * hit.nx + v.z * hit.nz; if (vn < 0) { const w = this.wallHit(hit, vn); if (w === 'bail') return; if (!w) { v.x -= hit.nx * vn * 1.2; v.z -= hit.nz * vn * 1.2; } } }
     // ceiling
     const ceil = cw.ceilingAt(p.x, p.z, p.y); if (p.y + 1.7 > ceil && v.y > 0) { p.y = ceil - 1.7; v.y = 0; }
     // grind snap
@@ -501,7 +533,7 @@ export class Skater {
     // The takeoff point travels with the event: gaps.js needs where this air STARTED, and by
     // the time main.js drains the queue a later substep has already moved lastGround.
     this.emit('land', { sketchy: this.sketchy, speed: sp, height, airTime: this.airTime, x: this.pos.x, z: this.pos.z, fromX: this.lastGround.x, fromZ: this.lastGround.z });
-    this.lastEdge = null;
+    this.lastEdge = null; this._airWear = 1;
     if (this.combo.length <= 1 && this.comboPending <= CFG.score.ollie) { this.combo = []; this.comboPending = 0; } // lone ollie = no combo
     // Revert: come down onto a transition with real air behind you and you spin out of it
     // rather than stopping the combo dead.
@@ -579,7 +611,7 @@ export class Skater {
     this.grind = null; this.balance = 0; this.grindCooldown = why === 'ollie' ? 0.05 : 0.25;
     this.state = 'air'; this.vel.y = vy; this.airTime = 0; this.airPeak = this.pos.y; this.spinAccum = 0; this.pos.y += 0.02;
     this._airFlips = 0; this._airFlipName = null; this.bodyFlip = null; this._bodyFlips = 0;
-    this._slowPop = false; this._airFromLaunch = true; this._takeoffY = this.pos.y;
+    this._slowPop = false; this._airFromLaunch = true; this._takeoffY = this.pos.y; this._airWear = 1;
     this._backHeld = inp ? inp.throttle < -0.5 : false;
     this.emit('grindEnd', { why });
     if (ev) this.startFlips(ev, inp);
@@ -613,6 +645,8 @@ export class Skater {
     if (b.t > CFG.bailTime && b.grounded > 0.3 || b.t > 6) {
       const wreck = this.wreckOf(b);
       this.state = 'ride'; this.bail = null; v.set(0, 0, 0); this._landedAt = -1;
+      // a wall slam gets up FACING AWAY from the wall and a step off it, with a moment's grace
+      if (this._wallN) { const n = this._wallN; this._wallN = null; this.yaw = yawOf(n.x, n.z); p.x += n.x * 1.6; p.z += n.z * 1.6; p.y = cw.groundAt(p.x, p.z, p.y + 0.6, 1.2).y; this._graceT = 1.5; }
       this.session.wrecks++; this.session.bestWreck = Math.max(this.session.bestWreck, wreck.score);
       this.emit('recover');
       // Wreck points are a flavour stat, NOT score: they never touch the combo or the total.
@@ -640,6 +674,7 @@ export class Skater {
       const m = STALE[Math.min(n, STALE.length - 1)];
       tr.pts *= m; tr.fresh = n === 0; tr.stale = m < 1;
     }
+    if (this.state === 'air' && this._airWear < 1) tr.pts *= this._airWear;   // a worn-out launch ramp
     if (this.special >= 1) tr.pts *= 1.5;             // SPECIAL: everything is worth half again
     tr.pts = Math.round(tr.pts); tr.x = this.pos.x; tr.z = this.pos.z; this.combo.push(tr); this.comboPending += tr.pts; this.session.tricks++;
     this.addSpecial(tr.pts / 6000);
@@ -655,11 +690,14 @@ export class Skater {
     let spot = null; if (here) { spot = here; total += here.bonus; if (!this.spotsHit.has(here.name)) { this.spotsHit.add(here.name); this.emit('spotFirst', { name: here.name, bonus: here.bonus }); } }
     // LAST CALL: main.js doubles every bank in the final seconds of a run
     const raw = total, mult = this.bankMult || 1; total = Math.round(total * mult);
+    // a run caps any single bank near a third of the next medal (main.js sets bankCap), so one
+    // send can't be the whole run
+    let capped = false; if (this.bankCap > 0 && total > this.bankCap) { total = this.bankCap; capped = true; }
     this.score += total; this.session.bestCombo = Math.max(this.session.bestCombo, total);
     this.addFlow(0.10 * Math.min(Math.min(Math.max(real.length, 1), 8) / 8, 1));
     this.addSpecial(total / 2500);
     if (this.score > this.best) { this.best = this.score; storeSet('css-best', String(this.best)); }
-    this.emit('bank', { total, raw, mult, n: real.length, spot: spot ? spot.name : null, tricks: real.map(t => t.name) });
+    this.emit('bank', { total, raw, mult, capped, n: real.length, spot: spot ? spot.name : null, tricks: real.map(t => t.name) });
     this.combo = []; this.comboPending = 0;
   }
   // Straight-to-the-bank points that never belonged to a combo (the B-T-O-W-N bonus).
@@ -672,7 +710,7 @@ export class Skater {
   // Zero the score/session for a fresh 2-minute run. `best` (the all-time free-skate best)
   // deliberately survives — it is a lifetime figure, not a per-run one.
   resetScore() {
-    this.scoreLocked = false; this.score = 0; this.combo = []; this.comboPending = 0; this.flow = 0; this._flowFull = false; this.special = 0; this.used.clear();
+    this.scoreLocked = false; this.score = 0; this.combo = []; this.comboPending = 0; this.flow = 0; this._flowFull = false; this.special = 0; this.used.clear(); this.rampUses.clear();
     this.session = { tricks: 0, bails: 0, bestCombo: 0, grindTime: 0, topSpeed: 0, dist: 0, bestWreck: 0, wrecks: 0, gaps: 0 };
   }
 

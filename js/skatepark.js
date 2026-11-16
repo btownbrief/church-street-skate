@@ -470,6 +470,23 @@ export function buildSkatepark(ctx) {
     spots.push({ name: 'Battery St launch', x: -505.5, z: -150, r: 14, bonus: 300 });
   }
 
+  // (d) STREET FUNBOXES (2026-11-16, round 3): College St, Main St and Battery St had almost
+  //     nothing to skate between the megas, so their gold runs (daily.js `gold`) were bare
+  //     asphalt. Fourteen small concrete funboxes — a wedge each end, grindable sides — in
+  //     the open strips beside the roadway. Every footprint (7 × 3.6 m, with margin) was
+  //     probed headless clear of walls, building footprints, solid props, car lanes, grass,
+  //     steps and other ramps.
+  //     They live in the one merged skatepark mesh: no extra draw calls.
+  {
+    const W = Math.PI / 2, S = Math.PI;
+    const STREET = [
+      [-79.1, 11.4, W], [-221, -1, W], [-285.4, 6.1, W], [-317, 9, W], [-360, 9, W], [-405, 9, W],   // College St
+      [-175, 129, W], [-211.8, 132.8, W], [-368, 140, W], [-411.1, 142.2, W], [-448.5, 141.3, W], [-517.7, 144.5, W], // Main St
+      [-525, -290, S], [-515, -190, S],                                                                    // Battery St
+    ];
+    for (const [x, z, yaw] of STREET) funbox(x, z, yaw, 3, 2.4, 0.45, 'Street funbox');
+  }
+
   // ===========================================================================
   // handrails on every real staircase that has one
   // ===========================================================================

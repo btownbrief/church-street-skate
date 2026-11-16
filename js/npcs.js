@@ -9,7 +9,7 @@
 //   [nSeated .. nStatic)           busker / vendors / ambassador (animated in place)
 //   [nStatic .. nStatic+nWalk)     roaming pedestrians     (halved on degrade)
 import * as THREE from '../vendor/three.module.min.js';
-import { seeThrough } from './seethrough.js';
+import { seeThrough, nearCull } from './seethrough.js';
 import { clamp, lerp, rng, textTexture } from './util.js';
 
 const BOX = new THREE.BoxGeometry(1, 1, 1);
@@ -206,7 +206,7 @@ export function createNpcs(ctx) {
   const nStatic = nSeated + flavour.length;
   const CAP = nStatic + nWalk;
 
-  const lam = (opts) => new THREE.MeshLambertMaterial(Object.assign({ color: 0xffffff }, opts || {}));
+  const lam = (opts) => nearCull(new THREE.MeshLambertMaterial(Object.assign({ color: 0xffffff }, opts || {})));
   const _hide = new THREE.Matrix4().makeScale(0, 0, 0).setPosition(0, -500, 0);
   const mk = (geo, mat, n, label) => {
     const m = new THREE.InstancedMesh(geo, mat, n); m.name = 'npcs:' + (label || 'part');

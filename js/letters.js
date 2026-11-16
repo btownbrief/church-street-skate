@@ -4,7 +4,7 @@
 //
 // TODAY'S LINE (2026-11-16): during a run the same five letters are re-laid along the day's
 // line and reset every run. They are the breadcrumbs — a tall soft light column stands on the
-// next one so you can see where to go from 150 m away — and each is worth +500 and +5 s
+// next one so you can see where to go from 150 m away — and each is worth +500 and +3 s
 // (main.js owns the clock). Free skate gets the weekly route back exactly as before.
 //
 // Renders as one small group of crossed-quad meshes — each letter is two quads at right
@@ -19,14 +19,15 @@ const SHOW = 90;            // metres — draw distance
 const HOVER = 1.4;          // metres above the ground under the letter
 const RUN_REACH = 3.5;      // a run is timed: be generous about what counts as "got it"
 const PASS = 15;            // metres past a letter (along the line) before the light moves on
-// GOLD LETTERS (2026-11-16 final): once the day's five are done the light never goes out.
-// Gold B-T-O-W-N sets are laid one letter at a time along the street you are on — the road
-// graph from OpenStreetMap, walked forward from the last letter — so there is always a light
-// ahead and never a U-turn. Each set pays more and gives back less time: that is the ramp.
+// GOLD LETTERS: once the day's five are done the light never goes out. Round 3: the gold
+// letters are dealt from the line's own hand-made run of skate features (daily.js `gold`),
+// nearest one ahead first, in order, and the chairlift takes you back to the top at the
+// bottom. Walking the OpenStreetMap street graph is now only the fallback for a player who
+// wandered far off the run. Each set gives back less time: that, and the clock, is the ramp.
 export const goldPts = () => 750;                          // flat: the light is the way, tricks are the score
-export const goldSecs = (set) => Math.max(1, 4 - set);    // set 1: +3 s, set 2: +2 s, then +1 s
+export const goldSecs = (set) => (set <= 1 ? 2 : 1);      // set 1: +2 s a letter, then +1 s
 export const SET_PTS = 2500, GOLD_SET_PTS = 1500;
-const goldGap = (set) => 55 + Math.min(4, set) * 8;        // and each set spaces them further apart
+const goldGap = (set) => 55 + Math.min(4, set) * 8;        // fallback walk: each set spaces them further apart
 const ROAD_KINDS = new Set(['pedestrian', 'primary', 'secondary', 'tertiary', 'residential', 'unclassified', 'living_street']);
 
 // Four routes. Every coordinate below was checked with __ground / __near: each sits on
@@ -78,7 +79,7 @@ function crossedQuad(size) {
 
 // ---- the road graph: OSM street centrelines, merged where they meet ---------------------
 function buildGraph(WORLD, play, terrain) {
-  const nodes = [], key = new Map(), m = 20;
+  const nodes = [], key = new Map(), m = 40;   // never within 40 m of the map edge
   const inside = (x, z) => x > play.minX + m && x < play.maxX - m && z > play.minZ + m && z < play.maxZ - m;
   const nodeAt = (x, z) => {
     const kx = Math.round(x), kz = Math.round(z);
@@ -127,18 +128,51 @@ export function buildLetters(ctx) {
   const gold = new THREE.Mesh(geoGold, new THREE.MeshBasicMaterial({ map: goldTex[0], transparent: true, side: THREE.DoubleSide, depthWrite: false }));
   gold.name = 'btown-gold'; gold.visible = false; group.add(gold);
 
-  // the beacon: one unlit, fogless, see-through cylinder on the next letter of a run
-  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 40, 14, 1, true),
-    new THREE.MeshBasicMaterial({ color: 0xfff0a8, transparent: true, opacity: 0.35, depthWrite: false, fog: false, side: THREE.DoubleSide }));
-  beam.name = 'btown-beacon'; beam.visible = false; beam.renderOrder = 2; group.add(beam);
+  // THE BEACON (round 3: "make the light loud"): one draw call, as before. A camera-facing
+  // beam 1.5 m wide — a bright core inside a soft glow, fading out toward the sky — plus a
+  // glowing ring on the ground under the letter, sharing one small canvas texture (beam in
+  // the top half, ring in the bottom). The ring is round, so turning the whole mesh to face
+  // the camera never shows on it.
+  const beamTex = (() => {
+    const c = document.createElement('canvas'); c.width = 64; c.height = 256; const g = c.getContext('2d');
+    for (let y = 0; y < 128; y++) {             // beam: v 0.5..1 (canvas rows 0..127, top = sky end)
+      const fadeUp = 0.25 + 0.75 * (y / 128);    // strong at the street, soft up in the sky
+      for (let x = 0; x < 64; x++) {
+        const u = Math.abs(x - 31.5) / 32, core = Math.exp(-u * u * 60), glow = Math.exp(-u * u * 5) * 0.55;
+        const a = Math.min(1, (core + glow)) * fadeUp, w = Math.round(200 + 55 * core);
+        g.fillStyle = `rgba(255,${w},${Math.round(120 + 135 * core)},${a.toFixed(3)})`; g.fillRect(x, y, 1, 1);
+      }
+    }
+    const img = g.createImageData(64, 128);  // ring: v 0..0.5 (rows 128..255)
+    for (let y = 0; y < 128; y++) for (let x = 0; x < 64; x++) {
+      const dx = (x - 31.5) / 32, dy = (y - 63.5) / 64, r = Math.hypot(dx, dy);
+      const a = Math.max(0, 1 - Math.abs(r - 0.78) / 0.14) * 0.95 + Math.max(0, 0.35 - r) * 0.5;
+      const k = (y * 64 + x) * 4; img.data[k] = 255; img.data[k + 1] = 236; img.data[k + 2] = 150; img.data[k + 3] = Math.round(Math.min(1, a) * 255);
+    }
+    g.putImageData(img, 0, 128);
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+  })();
+  const beamGeo = (() => {
+    const W = 0.75, H = 40, R = 2.3, y0 = 0.06;
+    const pos = [-W, 0, 0, W, 0, 0, W, H, 0, -W, 0, 0, W, H, 0, -W, H, 0,
+      -R, y0, -R, R, y0, -R, R, y0, R, -R, y0, -R, R, y0, R, -R, y0, R];
+    const uv = [0, 0.5, 1, 0.5, 1, 1, 0, 0.5, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0.5, 0, 0, 1, 0.5, 0, 0.5];
+    const gg = new THREE.BufferGeometry();
+    gg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); gg.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    return gg;
+  })();
+  const beam = new THREE.Mesh(beamGeo, new THREE.MeshBasicMaterial({ map: beamTex, color: 0xffe27a, transparent: true, opacity: 0.62, depthWrite: false, fog: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 }));
+  beam.name = 'btown-beacon'; beam.visible = false; beam.renderOrder = 2; beam.frustumCulled = false; group.add(beam);
+  const cam = ctx.camera;
 
   const week = { route: route.name, routeIdx, pts: route.pts };
   const missed = new Set();
   const state = { route: route.name, routeIdx, got, missed, items, total: LETTERS.length, all: LETTERS, key: KEY, run: false, next: null,
-    set: 0, gold: null, last: null, lastDir: null, cleanFive: false,
+    set: 0, gold: null, last: null, lastDir: null, cleanFive: false, goldRun: null, goldIdx: -1, laps: 0,
     // lay the letters along a run's line and start fresh (nothing is persisted in a run)
-    setRun(pts, name, start) {
+    setRun(pts, name, start, goldRun) {
       state.run = true; state.route = name || 'run'; got.clear(); missed.clear(); state.set = 0; state.gold = null;
+      state.goldRun = goldRun && goldRun.pts && goldRun.pts.length >= 3 ? goldRun : null; state.goldIdx = -1; state.laps = 0;
       items.forEach((it, i) => place(it, pts[i]));
       state.last = start ? { x: start[0], z: start[1] } : { x: pts[0][0], z: pts[0][1] };
       state.lastDir = null; gold.visible = false;
@@ -154,7 +188,9 @@ export function buildLetters(ctx) {
     // where "the line" is right now: from the last letter you took to the one the light is on
     segment() { const n = state.next; return n && state.last ? { ax: state.last.x, az: state.last.z, bx: n.x, bz: n.z } : null; },
     // BACK TO LINE: re-lay the gold letter ahead of a respawn point if it is far away
-    afterRespawn(x, z, dx, dz) { if (state.gold && Math.hypot(state.gold.x - x, state.gold.z - z) > 95) layGold(x, z, dx, dz); },
+    afterRespawn(x, z, dx, dz) { if (state.gold && Math.hypot(state.gold.x - x, state.gold.z - z) > 95) layFrom(x, z, dx, dz, 150); },
+    // the chairlift has put the skater at the top: the run starts again from its first point
+    afterLift() { const R = state.goldRun; if (!R) return; state.laps++; state.last = { x: R.top[0], z: R.top[1] }; state.lastDir = { x: -Math.sin(R.top[2]), z: -Math.cos(R.top[2]) }; layIdx(0); },
   };
   function place(it, p) { it.x = p[0]; it.z = p[1]; it.y = collide.groundAt(p[0], p[1], 500, 1000).y + HOVER; it.mesh.position.set(it.x, it.y, it.z); }
   ctx.letters = state;
@@ -211,7 +247,14 @@ export function buildLetters(ctx) {
     }
     return null;
   }
-  function layGold(x, z, dx, dz) {
+  function setGold(p) {
+    const y = collide.groundAt(p.x, p.z, 500, 1000).y + HOVER;
+    const n = got.size;                 // letter index within the gold set
+    state.gold = { ch: LETTERS[n % 5], x: p.x, y, z: p.z, dx: p.dx, dz: p.dz, t: 0 };
+    gold.material.map = goldTex[n % 5]; gold.position.set(p.x, y, p.z);
+  }
+  // FALLBACK: walk the street graph forward (only when the skater is far off the line's run)
+  function layWalk(x, z, dx, dz) {
     let p = null;
     for (let tries = 0; tries < 6 && !p; tries++) {
       const q = walk(x, z, dx, dz, goldGap(state.set) + Math.random() * 25 - tries * 6);
@@ -224,15 +267,55 @@ export function buildLetters(ctx) {
       }
     }
     if (!p) { const l = Math.hypot(dx, dz) || 1; p = { x: x + dx / l * 40, z: z + dz / l * 40, dx: dx / l, dz: dz / l }; }
-    const y = collide.groundAt(p.x, p.z, 500, 1000).y + HOVER;
-    const n = got.size;                 // letter index within the gold set
-    state.gold = { ch: LETTERS[n % 5], x: p.x, y, z: p.z, dx: p.dx, dz: p.dz, t: 0 };
-    gold.material.map = goldTex[n % 5]; gold.position.set(p.x, y, p.z);
+    state.goldIdx = -1; setGold(p);
   }
+  // THE RUN: point i of the line's gold run. Its heading points on to the next one, so
+  // "ridden past it" is measured along the way the run goes.
+  function layIdx(i) {
+    const P = state.goldRun.pts, a = P[i], b = P[(i + 1) % P.length], c = i > 0 ? P[i - 1] : null;
+    let dx = b[0] - a[0], dz = b[1] - a[1];
+    if (i === P.length - 1 && !state.goldRun.loop && c) { dx = a[0] - c[0]; dz = a[1] - c[1]; }
+    const l = Math.hypot(dx, dz) || 1;
+    state.goldIdx = i; setGold({ x: a[0], z: a[1], dx: dx / l, dz: dz / l });
+  }
+  // nearest run point AHEAD of (x,z) going (dx,dz), 25..maxD metres away; -1 if none
+  function aheadIdx(x, z, dx, dz, maxD) {
+    const R = state.goldRun; if (!R) return -1;
+    const dl = Math.hypot(dx, dz) || 1; dx /= dl; dz /= dl;
+    let best = -1, bd = 1e9;
+    R.pts.forEach((p, i) => { const ox = p[0] - x, oz = p[1] - z, d = Math.hypot(ox, oz); if (d < 15 || d > maxD) return; if ((ox * dx + oz * dz) / d < 0.35) return; if (d < bd) { bd = d; best = i; } });
+    return best;
+  }
+  // lay the next gold letter from wherever the skater is: the run if any of it is ahead,
+  // otherwise (for a downhill run) the chairlift, otherwise the street walk
+  function layFrom(x, z, dx, dz, maxD, allowLift = false) {
+    const i = aheadIdx(x, z, dx, dz, maxD);
+    if (i >= 0) { layIdx(i); return; }
+    if (allowLift && state.goldRun && !state.goldRun.loop) { lift(); return; }
+    if (state.goldRun && state.goldRun.loop) {   // a loop: nearest point you are not on top of
+      let best = -1, bd = 1e9; state.goldRun.pts.forEach((p, k) => { const d = Math.hypot(p[0] - x, p[1] - z); if (d >= 25 && d < bd) { bd = d; best = k; } });
+      if (best >= 0 && bd < 200) { layIdx(best); return; }
+    }
+    layWalk(x, z, dx, dz);
+  }
+  // advance along the run after the current point was taken (or ridden past)
+  function advance() {
+    const R = state.goldRun;
+    if (!R || state.goldIdx < 0) { const L = state.last, d = state.lastDir || { x: 0, z: -1 }; layFrom(L.x, L.z, d.x, d.z, 150); return; }
+    const n = state.goldIdx + 1;
+    if (n < R.pts.length) layIdx(n); else if (R.loop) layIdx(0); else lift();
+  }
+  // bottom of the run: main.js fades, puts the skater back at the top, and calls afterLift()
+  function lift() {
+    const R = state.goldRun; state.gold = null; gold.visible = false; state.goldIdx = -1;
+    pendingLift = { x: R.top[0], z: R.top[1], yaw: R.top[2] };
+  }
+  let pendingLift = null;
   function nextSet() {
     state.set++; got.clear(); missed.clear();
     const L = state.last, d = state.lastDir || { x: 0, z: -1 };
-    layGold(L.x, L.z, d.x, d.z);
+    if (state.set === 1) layFrom(L.x, L.z, d.x, d.z, 140, true);   // straight after the day's five
+    else advance();
   }
 
   let t = 0;
@@ -252,7 +335,7 @@ export function buildLetters(ctx) {
         got.add(it.ch); it.mesh.visible = false;
         if (!state.run) storeSet(KEY, JSON.stringify([...got]));
         if (state.run) { if (state.last) state.lastDir = { x: it.x - state.last.x, z: it.z - state.last.z }; state.last = { x: it.x, z: it.z }; }
-        sk.emit('letter', { ch: it.ch, n: got.size, total: LETTERS.length, run: state.run, set: 0, pts: 500, secs: 5 });
+        sk.emit('letter', { ch: it.ch, n: got.size, total: LETTERS.length, run: state.run, set: 0, pts: 500, secs: 3 });
         if (got.size >= LETTERS.length) { sk.award(SET_PTS); sk.emit('letters', { pts: SET_PTS, run: state.run, set: 0 }); }
       }
     }
@@ -275,6 +358,7 @@ export function buildLetters(ctx) {
       if (!nx2) { if (!state.lastDir) { const a = items[3], b = items[4]; state.lastDir = { x: b.x - a.x, z: b.z - a.z }; } nextSet(); }
       else state.next = nx2;
     }
+    if (pendingLift) { const L = pendingLift; pendingLift = null; sk.emit('lift', L); }
     if (state.set > 0 && state.gold) {
       const G = state.gold; G.t += dt;
       const d2 = (sk.pos.x - G.x) ** 2 + (sk.pos.z - G.z) ** 2;
@@ -285,24 +369,28 @@ export function buildLetters(ctx) {
         got.add(G.ch); state.lastDir = { x: G.dx, z: G.dz }; state.last = { x: G.x, z: G.z };
         sk.emit('letter', { ch: G.ch, n: got.size, total: LETTERS.length, run: true, set: state.set, pts: goldPts(state.set), secs: goldSecs(state.set), gold: true });
         if (got.size >= LETTERS.length) { sk.award(GOLD_SET_PTS); sk.emit('letters', { pts: GOLD_SET_PTS, run: true, set: state.set }); nextSet(); }
-        else layGold(G.x, G.z, G.dx, G.dz);
+        else advance();
       } else {
-        // went the other way, or it has been a long time: no U-turns — lay it ahead of you
+        // ridden past it (15 m beyond, along the run): the light moves on to the next point —
+        // a gold letter is never "missed", the same letter is simply laid again further on
         const along = (sk.pos.x - G.x) * G.dx + (sk.pos.z - G.z) * G.dz;
-        // (the same letter is simply laid again ahead of you: a gold set is never "missed")
         const far = d2 > 130 * 130, past = along > PASS && d2 < 60 * 60, stale = G.t > 22 && sk.speed > 3;
         if (G.t > 1.5 && (far || past || stale)) {
           const v = Math.hypot(sk.vel.x, sk.vel.z) > 1 ? { x: sk.vel.x, z: sk.vel.z } : { x: G.dx, z: G.dz };
-          state.last = { x: sk.pos.x, z: sk.pos.z }; state.lastDir = v;
-          layGold(sk.pos.x, sk.pos.z, v.x, v.z);
+          if (past && state.goldIdx >= 0) advance();
+          else { state.last = { x: sk.pos.x, z: sk.pos.z }; state.lastDir = v; layFrom(sk.pos.x, sk.pos.z, v.x, v.z, 150); }
         }
       }
       state.next = state.gold;
-    }
+    } else if (state.set > 0) state.next = null;
     // beacon on the next letter of the line (route order)
     const nx = state.next;
     beam.visible = !!nx;
-    if (nx) { beam.position.set(nx.x, nx.y + 19, nx.z); beam.material.opacity = 0.28 + 0.08 * Math.sin(t * 3); beam.material.color.setHex(state.set > 0 ? 0xffc04a : 0xfff0a8); }
+    if (nx) {
+      beam.position.set(nx.x, nx.y - HOVER, nx.z);
+      if (cam) beam.rotation.y = Math.atan2(cam.position.x - nx.x, cam.position.z - nx.z);
+      beam.material.opacity = 0.58 + 0.1 * Math.sin(t * 3); beam.material.color.setHex(state.set > 0 ? 0xffa21f : 0xffe27a);
+    }
   });
   return state;
 }

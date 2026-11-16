@@ -34,6 +34,8 @@
   </div>
 </div>
 <div id="coach" aria-hidden="true"></div>
+<div id="fade" aria-hidden="true"></div>
+<div id="chev" aria-hidden="true"></div>
 <button id="btn-back" class="backpill">Back to the line</button>
 <div id="screen-title" class="screen on">
   <div class="card title">
@@ -97,6 +99,18 @@
     </div>
   </div>
 </div>
-<script type="module" src="js/main.js"></script>
+<script>
+// A phone on bad signal can drop one of the module requests, and then the game never boots.
+// Instead of "Building Burlington…" for ever, the button turns into "Tap to retry".
+window.__bootFail = function () {
+  if (window.__booted) return;
+  var b = document.getElementById('btn-run'), l = document.getElementById('run-label'), n = document.getElementById('run-line');
+  if (!b || b.dataset.retry) return;
+  b.dataset.retry = '1'; l.textContent = 'Tap to retry'; n.textContent = 'the town did not load'; b.disabled = false;
+  b.addEventListener('click', function () { if (!window.__booted) location.reload(); });
+};
+setTimeout(window.__bootFail, 45000);
+</script>
+<script type="module" src="js/main.js" onerror="window.__bootFail()"></script>
 </body>
 </html>
