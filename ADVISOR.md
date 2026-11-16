@@ -432,3 +432,133 @@ guarded `BtownTicker.hide()/show()` calls are in place.
    1. For the ramp, Last Call starts at 0:30 and also wakes the street up (traffic and
    pedestrian density ×1.5 until the buzzer). Check: results after an 11k run reads "silver in
    6,7xx"; title shows 5 dots; a reload keeps them.
+
+## Review after upgrade — round 2 (after the final pass, commit 7037d24)
+
+Played the branch fresh as a 390x844 touch phone (real CDP touches, Metal GL): 11 full Today's
+Line runs across all five lines (`?day=0..4`; Mall Bomb three times back to back with Again,
+College Hill, City Hall and The Waterfront twice each), one clumsy first-timer session on
+today's real line (taps both buttons before finding the stick), a letter-by-letter dump of
+where the gold line goes on every line (22 letters each), plus title, pause, Last Call,
+results, reload, free skate and landscape. BEFORE is live `main` (first section of this file).
+Same three bots as before: "naive" pushes straight and taps, "follow" steers blind at the
+light, "tricky" uses full charges, double-taps and held TRICK. Everything is in
+`/tmp/upgrade-church-street-skate/review2/` (contact sheets `s-*.png`, logs `*.log`,
+`gold.log`). The machine was heavily loaded, so the bots are clumsier than a person.
+No console errors in any session. Supabase was blocked, so no test scores reached the board;
+`js/leaderboard.js` has no diff against `main` and the game id is unchanged.
+
+### Verdict
+
+This is now a game worth reopening, and the gap to live is enormous. One tap, a big readable
+skater, two buttons, a light that never goes out, three fresh goals on every Again, a different
+line tomorrow. It should ship. What is left is taste, not rescue: the gold half of the run
+walks you out of the good part of town onto empty asphalt (and four of the five lines end up
+on the same lakefront roads), a yellow card lands on top of the light every time you collect a
+letter, the medal ladder is finished on the first run, and walls still knock you down about
+seven times a run.
+
+### Scores (1–10): live → first pass → now
+
+| | Live | First pass | Now | Why |
+|---|---|---|---|---|
+| Fun | 5 | 7 | 7.5 | There is always something to chase now. The first 40 s of each line is the best of the game; the gold half is road cruising with flat-ground flips. |
+| Difficulty curve | 3 | 5 | 6 | Fair on the line, and the clock does squeeze. But the ramp is only that squeeze, runs are long (114–170 s), and walls cause 81 of 123 bails. |
+| Readability | 4 | 7 | 7 | Skater 75–206 px, five HUD items, camera fixed near walls (max 234 px, was 790). Lost a point back: letter cards cover the light, and the light is faint. |
+| Taste / Looks | 6 | 7 | 7.5 | Title, pause, results, tray and chips are clean and consistent. STOMPED is rare. The streets outside the mall are black asphalt and plain boxes. |
+| Phone feel | 4 | 8 | 8.5 | Two buttons, stable layout, Again in one tap, Back to the line pill, rotate works. |
+| Variety | 4 | 6 | 7 | Five lines, two layouts, goals rotate (seen: 3 runs, 3 chip sets). The gold half converges: College, City Hall, Waterfront and Main all finish on Battery St and the lake road. |
+| Reason to return | 3 | 6 | 7 | New line daily, streak from day 1, medals, new goals each run. But gold medal fell on run 1 on three lines, so the ladder is done in a week. |
+
+### Run log (score · bails · real seconds)
+
+| Line | Bot | Runs |
+|---|---|---|
+| Mall Bomb | follow ×3 (Again) | 20,310 · 12 · 152 → 37,725 · 11 · 170 → 45,154 · 10 · 164 |
+| College Hill | tricky ×2 | 70,050 · 16 · 141 → 40,624 · 11 · 131 |
+| City Hall | follow ×2 | 35,044 · 8 · 152 → 43,441 · 9 · 133 |
+| The Waterfront | follow ×2 | 45,350 · 7 · 163 → 31,688 · 12 · 137 |
+| Main Street | tricky / naive | 64,682 · 17 · 148 / 8,581 · 10 · 114 |
+
+### What clearly improved since the first pass
+
+- **The light never goes out.** Every run had a letter to chase until the buzzer (7–19
+  letters a run). The dead back half is gone: Mall Bomb scored 10k–25k after the fifth letter
+  (was 1,100).
+- **Run 2 is not run 1.** Mall Bomb, three Agains: GRAB / 3K / 5K → BIG DROP / MANUAL / 5K →
+  30s CLEAN / MANUAL / 540, with the letter layout alternating. Results say "2 new goals next run".
+- **Camera near walls.** Tallest skater in 180 screenshots: 234 px (was 750–790).
+- **STOMPED** fired 1–5 times a run (was 8–16) and the burst is small tan dust.
+- **Map edge** no longer glues you; **Back to the line** shows up when you are lost and works.
+- **Ladder and finish.** Medal and gap on results ("silver in 4,690"), five dots on the title,
+  streak from day 1, Last Call at 0:30. Title, pause and results all fit 844 px (`s-h-c.png`).
+
+### Still weak or broken
+
+1. **The gold line leaves the good part of town.** It walks the road graph, so it follows
+   car streets, not skate spots. On the four street lines, 2 of 68 gold letters sat on a
+   feature (the Main St mega kicker and the Battery launch); the rest are bare road with
+   traffic (10–27 honks a run). Mall Bomb's gold set runs out the bottom of the map to
+   (16, 383), turns round, and marches back up 20 m of climb to Pearl St. College Hill, City
+   Hall, The Waterfront and Main Street all end up lapping the same roads at x −480…−620
+   (`gold.log`), so from second 40 the five "different" lines look alike: a red jacket on
+   black asphalt (`s-g-b.png`, `s-d4t-b.png`).
+2. **A card covers the light.** Every letter pops a yellow card ("GOLD T +2s · gold set 2 ·
+   2/5 · +750") in the middle of the screen for 1.6 s, exactly where the next light and the
+   street ahead are (`s-g-a.png`, `s-g-b.png`: all 12 frames). With a spot or set bonus queued
+   it stays 3–5 s. The light itself is a thin pale column on a pale sky, and on the first
+   frame of a run it is at the very top under the clock, behind the "follow the light" card
+   (`s-h-a.png` frame 2). Nothing points at a light that is off screen.
+3. **The ladder is too short and one ramp is half a run.** Gold (45k) fell on the first run
+   on The Waterfront (45,350, blind bot, 7 bails), College Hill (70,050) and Main Street
+   (64,682, 17 bails: "top of the ladder"). One launch off the Main St mega kicker banked
+   30,060 — 46% of that run; College's super kicker 15,640. The naive bot made 8,581, so
+   bronze is right; silver and gold are not.
+4. **Walls are still the difficulty.** 81 of 123 bails were walls (7.4 a run), in every run
+   on every line. The first-timer session bailed on the same building three times in 8 s
+   (`s-h-b.png`). The bots are blind, but the pattern is the same one Stephen called "too
+   hard": the punishment is for steering, not for tricks.
+5. **Runs are long and the clock has no tension for a minute.** Median 148 s. After 60 s of
+   play the clock still read 1:20–1:29 in most runs, because the five letters hand back 25 s.
+6. **Small.** "top 78 mph" on results (speed cap is 62; the stat counts falling speed).
+   "0 × 1" combo line for a spin with no trick. BAIL text drawn over STOMPED and bank popups
+   (`s-d0f-d.png` frame 3). A sandwich board next to the lens fills the bottom of the screen
+   (`s-d2f.png` frame 2). The Waterfront starts facing uphill. If a script fails to load, the
+   title sits on "Building Burlington…" for ever with no retry (4 of 16 boots on my overloaded
+   local server; a harness artefact, but a phone on bad signal gets the same dead screen).
+   There is still no ticker script tag in this repo or on the live page; the guarded
+   `BtownTicker.hide()/show()` calls are there.
+
+### FINAL PUNCH LIST (ranked by impact)
+
+1. **Lay the gold line on skate spots, inside the line's own neighbourhood.** Give each line
+   a hand-ordered loop of 12–15 gold points on its own features (rails, kickers, funboxes,
+   steps, ledges, the named spots and gap take-offs) and deal gold letters from it, nearest
+   one ahead first; keep the road-graph walk only as the fallback. Never place one within
+   40 m of the map edge, never reverse direction, never more than 4 m of climb to the next.
+   Check: rerun the `gold.js` dump — no step under 30 m, at least 60% of gold letters within
+   6 m of a rail/ramp/ledge/spot, and no two lines share more than a third of their points.
+2. **Get the cards off the light and make the light loud.** Letter pickups: no centre card;
+   flash the tray tile and show "+3s" beside the clock. Keep a card only for a full set, a
+   new gap or a new spot, placed under the goal chips, 1.0 s. Beacon: twice as wide, about
+   60% opacity, a bright core and a ring on the ground. Add one edge chevron when the next
+   letter is off screen or behind you. At a standstill tilt the camera up so the street and
+   the first light are in view below the HUD. Check: 20 screenshots taken 1 s after a pickup
+   show nothing drawn within 60 px of the light; the first frame of all five lines shows it.
+3. **Stretch the ladder and tame the two mega ramps.** Medals 15k / 40k / 80k plus a fourth
+   rung at 130k, so gold takes days, not one run. The same launch ramp pays ×1, ×0.5, ×0.25
+   within a run, and a single bank is capped near a third of the medal above it. Check: ten
+   bot runs give no first-run gold; no single combo is more than 35% of a run.
+4. **Walls bounce, they don't slam.** A wall hit under 14 m/s, or at a glancing angle (under
+   45°) at any speed, is a stumble: lose half the speed, slide along the wall, drop the combo,
+   stay on the board. Only a head-on hit at 14 m/s or more bails, and the get-up faces away
+   from the wall, 2 m off it. Check: follow bot averages 3 bails a run or fewer over the five
+   lines; never two bails inside 3 s at the same spot.
+5. **Tighten the clock.** First five letters +3 s (not +5), gold +2 / +1 / +1. Target a
+   median run of 100–110 s for the follow bot, and under 1:00 on the clock by the one-minute
+   mark, so Last Call arrives while the run is still hot.
+6. **Polish bundle.** Top speed from horizontal speed only. Hide the combo line when it is
+   worth 0. One popup at a time in the centre (BAIL replaces, never overlaps). Skip drawing
+   any prop within 2 m of the lens, not just the see-through class. Start The Waterfront at
+   Battery Park heading downhill. On a failed module load, turn the title button into "Tap
+   to retry".
