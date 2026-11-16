@@ -493,9 +493,10 @@ export class Skater {
       const ns = Math.min(28, sp * 1.2);
       v.x *= ns / sp; v.z *= ns / sp;
       this.addFlow(0.08);
-      // STOMPED! (the callout, dust, hit-pause) is for the real ones only: a big, long air
-      // with a combo worth shouting about. Was 8–16 a run, often on a +20 kickflip.
-      if (this.airTime > 0.95 && height > 2.4 && this.comboValue() >= 300) this.emit('stomp', { height, airTime: this.airTime, speed: ns });
+      // STOMPED! (the callout, dust, hit-pause) is for the real ones only: a big, long air off
+      // a ramp, a grind or a real drop (not a flat-ground ollie) with a combo worth shouting
+      // about. Was 8–16 a run, often on a +20 kickflip.
+      if (this.airTime > 0.95 && height > 2.4 && (this._airFromLaunch || drop >= 1.5) && this.comboValue() >= 300) this.emit('stomp', { height, airTime: this.airTime, speed: ns });
     }
     // The takeoff point travels with the event: gaps.js needs where this air STARTED, and by
     // the time main.js drains the queue a later substep has already moved lastGround.
