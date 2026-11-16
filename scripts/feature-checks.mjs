@@ -289,8 +289,8 @@ checks.run = async () => {
     window.__tp(it.x, it.z, Math.PI / 2, 0); for (let i = 0; i < 6; i++) window.__sim(1 / 60);
     const after = window.__T.state();
     out.letter = { dt: +(after.runLeft - before.runLeft).toFixed(2), dScore: after.score - before.score };
-    // LAST CALL at 0:20: banks double
-    window.__T.setLeft(20.5); window.__sim(0.7);
+    // LAST CALL at 0:30: banks double
+    window.__T.setLeft(30.5); window.__sim(0.7);
     out.lastCall = window.__T.state().lastCall && document.body.classList.contains('lastcall');
     window.__recOn();
     window.__tp(-200, 10, Math.PI / 2, 9);
@@ -308,7 +308,7 @@ checks.run = async () => {
     /College Hill/.test(title) && r.started.line === 'College Hill' && r.timer0 === '1:30' && r.idle === 90 && r.chips === 3,
     `title "${title}", start ${r.started.pos}, clock ${r.timer0} → ${r.idle} s after 1 s idle, ${r.chips} goal chips`);
   report('a letter adds 5 s and 500', r.letter.dt > 4.5 && r.letter.dScore >= 500, JSON.stringify(r.letter));
-  report('Last Call doubles banks in the final 20 s', r.lastCall && r.bankMult === 2, `lastCall=${r.lastCall} bank mult=${r.bankMult}`);
+  report('Last Call doubles banks in the final 30 s', r.lastCall && r.bankMult === 2, `lastCall=${r.lastCall} bank mult=${r.bankMult}`);
   report("results show today's best + tomorrow's line", r.shown && /Tomorrow: City Hall/.test(r.res) && /today's best/.test(r.res) && /test-1/.test(r.daily || ''), r.res);
   report('run mode offers the leaderboard', r.lbVisible, `leaderboard panel visible=${r.lbVisible}`);
   await shot('results');
@@ -671,6 +671,103 @@ checks.freeze = async () => {
     return { sawAir, state: d.state, sp: +Math.hypot(d.vel[0], d.vel[2]).toFixed(1), barOn: document.querySelector('#charge').classList.contains('on') };
   });
   report('no frozen skater after a held-ollie kicker launch', r.sawAir && r.sp > 6 && !r.barOn, JSON.stringify(r));
+};
+
+// ===== 2026-11-16 final: the light never goes out, run 2 ≠ run 1, a way back ============
+// Load a pinned line, start a run through the real button, return to free skate after.
+async function runPage(day) {
+  const base = (process.env.URL || 'http://localhost:8765/index.html').replace(/\?.*$/, '');
+  await page.goto(base + '?day=' + day);
+  await page.waitForFunction(() => !!window.__tp && !document.querySelector('#btn-run').disabled, null, { timeout: 180000 });
+  await page.click('#btn-run'); await page.waitForTimeout(200);
+}
+checks.goldline = async () => {
+  await runPage(4);
+  const r = await ev(() => {
+    const L = window.__world.letters, out = {};
+    window.__sim(0.3, ['ArrowUp']);
+    for (const it of L.items) { window.__tp(it.x, it.z, Math.PI / 2, 0); window.__sim(0.1); }
+    const g = L.gold, last = L.items[4];
+    out.set = L.set; out.gold = g ? { d: +Math.hypot(g.x - last.x, g.z - last.z).toFixed(1), ground: window.__ground(g.x, g.z).kind } : null;
+    out.beacon = !!L.next && L.next === g; out.tray = document.querySelector('#letters').className;
+    const before = window.__T.state();
+    window.__tp(g.x, g.z, Math.PI / 2, 0); window.__sim(0.1);
+    const after = window.__T.state();
+    out.dScore = after.score - before.score; out.dt = +(after.runLeft - before.runLeft).toFixed(2);
+    out.nextGold = L.gold && L.gold !== g ? +Math.hypot(L.gold.x - g.x, L.gold.z - g.z).toFixed(1) : null;
+    return out;
+  });
+  report('after B-T-O-W-N the light turns gold and stays ahead', r.set === 1 && r.gold && r.gold.d > 30 && r.gold.d < 120 && r.beacon && /gold/.test(r.tray), JSON.stringify(r));
+  report('a gold letter pays +750 and +3 s, and lays the next', r.dScore >= 750 && r.dt > 2.5 && r.nextGold > 20, JSON.stringify({ dScore: r.dScore, dt: r.dt, nextGold: r.nextGold }));
+};
+checks.skip = async () => {
+  await runPage(1);
+  const r = await ev(() => {
+    const L = window.__world.letters; window.__sim(0.3, ['ArrowUp']);
+    const a = L.items[0], b = L.items[1];
+    const ux = (b.x - a.x), uz = (b.z - a.z), ul = Math.hypot(ux, uz);
+    // ride past B on the far side, 20 m beyond it, without touching it
+    window.__tp(a.x + ux / ul * 20, a.z + uz / ul * 20, Math.atan2(-ux, -uz), 8); window.__sim(0.2);
+    return { missed: [...L.missed], next: L.next && L.next.ch };
+  });
+  report('a letter passed by 15 m moves the light on (no U-turn)', r.missed.includes('B') && r.next === 'T', JSON.stringify(r));
+};
+checks.edge = async () => {
+  // the waterfront edge where the advisor's bot sat at 0 mph: push along it (south) and
+  // straight into it (west). North of here is a real building at z −345, not the edge.
+  const r = await ev(() => {
+    const go = (yaw, x) => { window.__tp(x, -333, yaw, 0); window.__hold({ throttle: 1, steer: 0 }); for (let i = 0; i < 240; i++) window.__sim(1 / 60); window.__hold(null); const d = window.__dbg(); return { sp: +Math.hypot(d.vel[0], d.vel[2]).toFixed(2), pos: d.pos }; };
+    return { along: go(Math.PI, -643), into: go(Math.PI / 2, -640) };
+  });
+  report('the map edge bounces you, it does not glue you', r.along.sp > 5 && r.into.sp > 5, JSON.stringify(r));
+};
+checks.backline = async () => {
+  await runPage(2);
+  const r = await ev(() => {
+    const L = window.__world.letters; window.__sim(0.3, ['ArrowUp']);
+    window.__tp(-30, 164, 0, 0); window.__sim(2.6);
+    const on = document.querySelector('#btn-back').classList.contains('on');
+    window.__sim(1 / 60, ['KeyR']); window.__sim(0.1);
+    const p = window.__T.state().pos, last = L.last;
+    return { on, d: +Math.hypot(p[0] - last.x, p[2] - last.z).toFixed(2), offAfter: !document.querySelector('#btn-back').classList.contains('on') };
+  });
+  report('stopped off the line: BACK TO LINE appears and returns you', r.on && r.d < 1 && r.offAfter, JSON.stringify(r));
+};
+checks.rotation = async () => {
+  await runPage(0);
+  const r = await ev(async () => {
+    const m = await import('/js/daily.js');
+    const t = m.today(); const g1 = t.goals.map(g => g.id), lay1 = t.layout;
+    m.saveRun(t, 11000, [g1[0], g1[1]]);
+    const t2 = m.today(); const g2 = t2.goals.map(g => g.id);
+    const res = m.saveRun(t2, 26000, []);
+    const medals = JSON.parse(localStorage.getItem('css-medals') || '{}');
+    return { g1, g2, lay1, lay2: t2.layout, medal: res.medal, best: medals.mall, sameLast: g1[2] === g2[2] };
+  });
+  report('cleared goals rotate out on the next run, the third stays', r.g1[0] !== r.g2[0] && r.g1[1] !== r.g2[1] && r.sameLast, JSON.stringify(r));
+  report('letter layout alternates A/B by run', r.lay1 !== r.lay2, `layout ${r.lay1} → ${r.lay2}`);
+  report('medals: 26k is silver and is remembered per line', r.medal === 2 && r.best === 2, JSON.stringify({ medal: r.medal, stored: r.best }));
+  const t = await ev(() => { window.__T.setLeft(0.2); window.__sim(1.2); return document.querySelector('#res-medal').innerText.replace(/\n/g, ' '); });
+  report('results name the next medal and the gap to it', /in [\d,]+/.test(t), t);
+  await page.click('#btn-free'); await page.waitForTimeout(200);
+};
+checks.stompclean = async () => {
+  const r = await ev(() => {
+    // roll over a mall funbox with no trick: no STOMPED!
+    const f = window.__world.collide.all.ramps.find(rr => rr.name === 'Mall funbox');
+    window.__recOn(); window.__tp(f.ax - f.ux * 10, f.az - f.uz * 10, Math.atan2(-f.ux, -f.uz), 11); window.__sim(3);
+    const n = window.__rec.filter(e => e.type === 'stomp').length; window.__recOff(); return { stomps: n };
+  });
+  report('no STOMPED! for rolling over a funbox', r.stomps === 0, JSON.stringify(r));
+};
+checks.camwall = async () => {
+  const r = await ev(() => {
+    const out = [];
+    for (const [x, z] of [[-30, 164], [29, 92]]) for (const yaw of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) { window.__tp(x, z, yaw, 0); for (let i = 0; i < 60; i++) window.__sim(1 / 60); out.push(window.__T.skaterBox().h); }
+    return out;
+  });
+  const vh = await ev(() => innerHeight);
+  report('camera never eats the screen next to a wall', Math.max(...r) < vh * 0.42, `skater heights ${r.join(', ')} px at ${vh} px tall`);
 };
 
 const all = want.length ? want : Object.keys(checks);

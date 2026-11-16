@@ -45,5 +45,5 @@ export const CFG = {
     spin180: 80, spin360: 260, spin540: 600, spin720: 1100,
     grindPerSec: 90, grindBase: 80, manualBase: 60, manualPerSec: 70, bigAir: 50, revert: 60, maple: 1200 },
   runSeconds: 90,          // TODAY'S LINE: 90 s, +5 s per letter (was a 120 s run)
-  lastCall: 20,            // final seconds of a run: every bank counts double
+  lastCall: 30,            // final seconds of a run: every bank counts double (was 20)
 };

@@ -13,7 +13,7 @@ import { GapTracker } from './gaps.js';
 import { isMobile, isTouch, storeGet, storeSet } from './util.js';
 import { installDev } from './devhooks.js';
 import { updateHole } from './seethrough.js';
-import { today as getToday, loadDaily, saveRun, GoalTracker, GOAL_PTS, ALL_GOALS_PTS, LETTER_PTS, LETTER_SECS } from './daily.js';
+import { today as getToday, loadDaily, saveRun, loadMedals, GoalTracker, LINES, MEDALS, GOAL_PTS, ALL_GOALS_PTS } from './daily.js';
 import { lbEnabled, getName, playerId, submitScore, renamePlayer, fetchTop, monthLabel } from './leaderboard.js';
 
 const $ = (s) => document.querySelector(s);
@@ -44,6 +44,7 @@ let locTimer = 0, curLoc = '', freshT = 0, hitPause = 0, looping = false;
 let mode = 'free', runLeft = 0, runOver = false, frozen = false, clockOn = false, lastCall = false;
 let day = getToday(), goals = null, coach = null;
 let autopilot = null, evTap = null;   // headless-playtest hooks (js/devhooks.js)
+let slowT = 0, offT = 0, backOn = false;   // BACK TO LINE: how long you've been stopped / off the line
 
 // ---- title ------------------------------------------------------------------------------
 function paintTitle() {
@@ -53,9 +54,12 @@ function paintTitle() {
   $('#run-line').textContent = day.line.name;
   const bits = [];
   if (d.best > 0) bits.push(`today's best ${d.best.toLocaleString()}`);
-  if (d.streak > 1) bits.push(`${d.streak}-day streak`);
+  if (d.streak > 0) bits.push(`${d.streak}-day streak`);
   if (!bits.length) bits.push(day.line.blurb);
   $('#title-meta').textContent = bits.join(' · ');
+  // five lines, one dot each, coloured by your best medal on it; today's is ringed
+  const med = loadMedals();
+  $('#title-lines').innerHTML = LINES.map((L, i) => `<span class="ld m${+med[L.id] || 0}${i === day.idx ? ' today' : ''}" title="${L.name}"><i></i>${L.name.replace(/^The /, '')}</span>`).join('');
 }
 
 async function boot() {
@@ -109,7 +113,8 @@ function start(m = 'free') {
     day = getToday();
     const L = day.line, gy = world.collide.groundAt(L.start[0], L.start[1], 200, 300).y;
     skater.resetScore(); skater.respawn(L.start[0], gy + 0.02, L.start[1], L.start[2]); follow.reset(skater); locTimer = 0;
-    if (world.letters) world.letters.setRun(L.letters, L.name);
+    // two letter layouts per line, alternating run by run (A on odd runs, B on even)
+    if (world.letters) world.letters.setRun(day.layout && L.lettersB ? L.lettersB : L.letters, L.name, L.start);
     goals = new GoalTracker(day.goals);
     hud.setGoals(day.goals, goals.done); hud.showBest = false;
     hud.shownScore = 0; hud.el.score.textContent = '0';
@@ -119,6 +124,7 @@ function start(m = 'free') {
     if (world.letters && world.letters.run) world.letters.setWeek();
   }
   hud.setTimer(m === 'run' ? runLeft : null);
+  slowT = 0; offT = 0; showBack(false);
   running = true; paused = false; last = performance.now();
   ticker(false);
   // first-play coach: one prompt at a time, until the player has done each thing once
@@ -135,13 +141,20 @@ function endRun() {
   skater.scoreLocked = true;                         // the coast to a stop scores nothing
   input.resetAll(); hud.clearCallouts();
   const s = skater.session, score = skater.score;
-  const res = saveRun(day, score, goals ? goals.done : []);
+  const res = saveRun(day, score, goals ? goals.ids : []);
+  showBack(false);
   $('#res-eyebrow').textContent = `Today's Line · ${day.line.name}`;
   // a "new best" only means something once there was a best to beat
   const badge = res.newRunBest && res.prevRunBest > 0 ? 'NEW ALL-TIME BEST' : res.newBestToday && res.prevBest > 0 ? 'NEW BEST TODAY' : '';
   $('#res-badge').textContent = badge; $('#res-badge').classList.toggle('on', !!badge);
-  $('#res-goals').innerHTML = day.goals.map((g, i) => `<div class="${goals && goals.done[i] ? 'hit' : res.goals[i] ? 'today' : ''}"><b>${goals && goals.done[i] ? '✔' : res.goals[i] ? '✔' : '○'}</b> ${g.name}${goals && goals.done[i] ? '' : `<i>${hintOf(g)}</i>`}</div>`).join('');
-  $('#res-stats').innerHTML = `today's best <b>${res.best.toLocaleString()}</b> · all-time <b>${res.runBest.toLocaleString()}</b>${res.streak > 1 ? ` · <b>${res.streak}</b>-day streak` : ''}<br>best combo ${s.bestCombo.toLocaleString()} · ${s.tricks} tricks · ${s.bails} bails · top ${Math.round(s.topSpeed * 2.237)} mph`;
+  // the ladder: the medal you got, and how far the next one is
+  const M = res.medal, nextM = MEDALS[M];
+  $('#res-medal').className = 'medal m' + M;
+  $('#res-medal').innerHTML = (M ? `<b>${MEDALS[M - 1].name.toUpperCase()}</b>${M > res.prevMedal ? ' · new on ' + day.line.name : ''}` : '<b>NO MEDAL YET</b>')
+    + (nextM ? `<span>${nextM.name.toLowerCase()} in ${(nextM.at - score).toLocaleString()}</span>` : '<span>top of the ladder</span>');
+  $('#res-goals').innerHTML = day.goals.map((g, i) => `<div class="${goals && goals.done[i] ? 'hit' : ''}"><b>${goals && goals.done[i] ? '✔' : '○'}</b> ${g.name}${goals && goals.done[i] ? '' : `<i>${hintOf(g)}</i>`}</div>`).join('')
+    + (res.newGoals ? `<div class="next">${res.newGoals === 1 ? 'a new goal' : res.newGoals + ' new goals'} next run</div>` : '');
+  $('#res-stats').innerHTML = `today's best <b>${res.best.toLocaleString()}</b> · all-time <b>${res.runBest.toLocaleString()}</b> · <b>${res.streak}</b>-day streak<br>best combo ${s.bestCombo.toLocaleString()} · ${s.tricks} tricks · ${s.bails} bails · top ${Math.round(s.topSpeed * 2.237)} mph`;
   $('#res-tomorrow').textContent = `Tomorrow: ${day.tomorrow.name}`;
   $('#screen-results').classList.add('on');
   countUp($('#res-score'), score);
@@ -220,13 +233,33 @@ function advanceCoach() {
   paintCoach();
 }
 
+// ---- BACK TO LINE ----------------------------------------------------------------------------
+function segDist(x, z, s) {
+  const ex = s.bx - s.ax, ez = s.bz - s.az, l2 = ex * ex + ez * ez;
+  const t = l2 < 1e-9 ? 0 : Math.max(0, Math.min(1, ((x - s.ax) * ex + (z - s.az) * ez) / l2));
+  return Math.hypot(s.ax + ex * t - x, s.az + ez * t - z);
+}
+function showBack(on) { backOn = on; $('#btn-back').classList.toggle('on', on); }
+// One tap: back on the last letter you took (or the start), facing the light. The clock keeps
+// running and the combo is dropped — it is a way back, not a free reset.
+function backToLine() {
+  const L = world.letters; if (!L || mode !== 'run' || runOver) return;
+  const from = L.last || { x: day.line.start[0], z: day.line.start[1] }, nx = L.next;
+  const yaw = nx ? Math.atan2(-(nx.x - from.x), -(nx.z - from.z)) : day.line.start[2];
+  const gy = world.collide.groundAt(from.x, from.z, 200, 300).y;
+  skater.respawn(from.x, gy + 0.05, from.z, yaw); follow.reset(skater);
+  if (L.afterRespawn) L.afterRespawn(from.x, from.z, -Math.sin(yaw), -Math.cos(yaw));
+  slowT = 0; offT = 0; showBack(false); input.resetAll();
+}
+$('#btn-back').addEventListener('click', backToLine);
+
 function stepGame(dt, now) {
   input.poll();
   if (autopilot) autopilot(input, skater, dt);
   // after the buzzer the skater coasts to a stop: everything held is dropped every frame
   if (frozen) input.resetAll();
   if (input.pause) { setPaused(true); input.endFrame(); return false; }
-  if (input.reset) { const g = skater.lastGround; skater.respawn(g.x, g.y + 0.05, g.z); follow.reset(skater); input.resetAll(); locTimer = 0; }
+  if (input.reset) { if (mode === 'run' && !runOver) backToLine(); else { const g = skater.lastGround; skater.respawn(g.x, g.y + 0.05, g.z); follow.reset(skater); } input.resetAll(); locTimer = 0; }
   if (input.cam) follow.mode = (follow.mode + 1) % 3;
   if (input.map && mode === 'free') hud.toggleMap();
   // the clock starts when the player does something — nothing happens until they act
@@ -253,12 +286,14 @@ function stepGame(dt, now) {
     if (ev.type === 'maple') { mesh.leafBurst(skater.pos); follow.kick(0.4); }
     if (ev.type === 'stomp') { mesh.stompBurst(skater.pos); follow.kick(0.5); buzz(25); hitPause = Math.max(hitPause, 0.12); }
     if (ev.type === 'gap') { follow.kick(0.3); if (ev.first) hitPause = Math.max(hitPause, 0.12); }
-    if (ev.type === 'letter' && ev.run && mode === 'run' && !runOver) { skater.award(LETTER_PTS); runLeft += LETTER_SECS; clockOn = true; hud.bumpTimer(); buzz(15); }
+    if (ev.type === 'letter' && ev.run && mode === 'run' && !runOver) { skater.award(ev.pts); runLeft += ev.secs; clockOn = true; hud.bumpTimer(ev.secs); buzz(15); offT = 0; }
   }
   skater.events.length = 0;
   // free skate has no run to reset trick staleness, so it wears off once a minute
   if (mode === 'free') { freshT += dt; if (freshT > 60) { freshT = 0; skater.used.clear(); } }
   chal.update(dt, skater);
+  // free-skate challenges still tick during a run, but they keep quiet: one voice at a time
+  if (mode === 'run') chal.justDone.length = 0;
   for (const c of chal.justDone) { hud.callout('CHALLENGE: ' + c.name, chal.remaining ? `${chal.remaining} to go` : 'that is all of them'); audio.handle({ type: 'spotFirst' }); }
   chal.justDone.length = 0;
   // today's goals: +1,500 each, +5,000 for all three
@@ -270,6 +305,14 @@ function stepGame(dt, now) {
       if (goals.all) { skater.award(ALL_GOALS_PTS); hud.callout('LINE CLEARED', `all three goals · +${ALL_GOALS_PTS.toLocaleString()}`, 'gold'); audio.handle({ type: 'spotFirst' }); }
     }
     goals.justDone.length = 0;
+  }
+  // BACK TO LINE: stopped for 2 s, or 45 m off the line for 4 s → a pill offers the way back
+  if (mode === 'run' && !runOver && clockOn) {
+    slowT = skater.speed < 1.5 && skater.state !== 'bail' && skater.state !== 'air' ? slowT + dt : 0;
+    const seg = world.letters && world.letters.segment && world.letters.segment();
+    offT = seg && segDist(skater.pos.x, skater.pos.z, seg) > 45 ? offT + dt : 0;
+    const want = slowT > 2 || offT > 4;
+    if (want !== backOn) showBack(want);
   }
   if (coach && coach.step === 0 && skater.speed > 5) advanceCoach();
   mesh.update(dt, skater, now / 1000);

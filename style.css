@@ -24,8 +24,13 @@ body:not(.playing) #hud, body:not(.playing) #touch { display:none !important; }
 @keyframes plus { 0% { transform:scale(1.35); color:#8ff0a8; } 100% { transform:scale(1); } }
 @keyframes tick { 50% { opacity:.55; } }
 #letters { display:flex; gap:6px; margin-top:3px; }
-#letters b { font-family:var(--display); font-size:17px; letter-spacing:.04em; opacity:.5; font-weight:400; }
-#letters b.got { opacity:1; color:var(--accent); }
+#letters b { font-family:var(--display); font-size:17px; letter-spacing:.04em; font-weight:400; color:rgba(255,255,255,.72); width:17px; height:20px; line-height:20px; text-align:center; border-radius:4px; background:rgba(10,14,20,.45); }
+#letters b.got { color:#2b1706; background:var(--accent); text-shadow:none; }
+#letters b.miss { opacity:.35; text-decoration:line-through; background:none; }
+#letters b.next { color:#fff; box-shadow:inset 0 0 0 1.5px rgba(255,240,168,.9); animation: tick 1.2s ease-in-out infinite; }
+#letters.gold b { color:#ffcf6a; }
+#letters.gold b.got { background:linear-gradient(#ffe48a,#f09a1e); color:#3a1a00; }
+#letters i { font-style:normal; font-family:var(--display); font-size:15px; color:#ffcf6a; margin-left:2px; line-height:20px; }
 #goals { position:fixed; left:0; right:0; top:calc(88px + var(--safe-t)); display:flex; justify-content:center; gap:6px; }
 .chip { font-size:11px; font-weight:800; letter-spacing:.06em; padding:4px 9px; border-radius:999px; background:var(--panel); border:1px solid rgba(255,255,255,.22); text-shadow:none; white-space:nowrap; }
 .chip.done { background:var(--green); border-color:#7ee2a0; }
@@ -68,7 +73,7 @@ body.run #hud-loc { display:none; }
 #popups .pop.bail { color:var(--red); font-size:26px; }
 #popups .pop.sk { color:#ffb347; font-size:18px; }
 @keyframes popUp { 0% { opacity:0; transform:translate(-50%,-30%) scale(.6);} 9% { opacity:1; transform:translate(-50%,-50%) scale(1.1);} 80% { opacity:1; transform:translate(-50%,-70%) scale(1);} 100% { opacity:0; transform:translate(-50%,-110%) scale(1);} }
-#callout { position:absolute; left:50%; top:27%; transform:translate(-50%,0) scale(.9); background:rgba(181,85,47,.94); color:#fff; padding:8px 18px 9px; border-radius:12px; text-align:center; opacity:0; transition: opacity .2s, transform .2s; box-shadow:0 8px 30px rgba(0,0,0,.4); max-width:88vw; text-shadow:none; }
+#callout { position:absolute; left:50%; top:24%; transform:translate(-50%,0) scale(.9); background:rgba(181,85,47,.94); color:#fff; padding:8px 18px 9px; border-radius:12px; text-align:center; opacity:0; transition: opacity .2s, transform .2s; box-shadow:0 8px 30px rgba(0,0,0,.4); max-width:88vw; text-shadow:none; }
 #callout.on { opacity:1; transform:translate(-50%,0) scale(1); }
 #callout.goal { background:rgba(44,154,88,.95); }
 #callout.gold, #callout.letter { background:rgba(240,190,50,.96); color:#2b1706; }
@@ -101,6 +106,11 @@ body.touch #touch { display:block; }
 /* first-play coach: one prompt at a time */
 #coach { position:fixed; z-index:7; left:50%; top:calc(186px + var(--safe-t)); transform:translateX(-50%); background:rgba(10,14,20,.78); border:1px solid rgba(255,216,77,.4); border-radius:999px; padding:9px 18px; font-size:14px; pointer-events:none; opacity:0; transition:opacity .3s; white-space:nowrap; }
 #coach.on { opacity:1; }
+body.co #coach.on { opacity:0; }
+/* BACK TO LINE: fades in only when you are stopped or lost */
+.backpill { position:fixed; z-index:8; left:50%; top:calc(126px + var(--safe-t)); transform:translateX(-50%) scale(.9); background:rgba(240,190,50,.96); color:#2b1706; border:0; border-radius:999px; padding:11px 20px; font-weight:900; font-size:14px; letter-spacing:.04em; opacity:0; pointer-events:none; transition:opacity .25s, transform .25s; box-shadow:0 6px 20px rgba(0,0,0,.4); white-space:nowrap; touch-action:none; }
+.backpill.on { opacity:1; transform:translateX(-50%) scale(1); pointer-events:auto; }
+body:not(.playing) .backpill { display:none; }
 #coach b { color:var(--accent); }
 body.lastcall #hud-top #timer { color:var(--red); }
 
@@ -160,6 +170,22 @@ summary { cursor:pointer; font-size:13px; font-weight:700; padding:8px 0; color:
 .rgoals b { display:inline-block; width:18px; }
 .rgoals div.today { opacity:.85; }
 #res-stats { font-size:12.5px; opacity:.8; line-height:1.7; margin-bottom:10px; }
+.rgoals div.next { opacity:.9; color:var(--accent); font-size:12.5px; padding-top:6px; }
+.medal { display:flex; flex-direction:column; align-items:center; gap:2px; margin:0 auto 12px; font-size:12.5px; }
+.medal b { font-weight:900; letter-spacing:.16em; padding:5px 14px; border-radius:999px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.2); }
+.medal span { opacity:.8; }
+.medal.m1 b { background:#a8683a; border-color:#d39463; color:#fff; }
+.medal.m2 b { background:#aeb6c2; border-color:#e3e8ee; color:#1b2230; }
+.medal.m3 b { background:linear-gradient(#ffe27a,#e2a42a); border-color:#fff0b0; color:#3a2000; }
+.lines { display:flex; justify-content:center; gap:10px; margin:2px 0 6px; flex-wrap:wrap; }
+.lines .ld { display:flex; flex-direction:column; align-items:center; gap:3px; font-size:9.5px; letter-spacing:.04em; opacity:.6; width:52px; }
+.lines .ld i { width:14px; height:14px; border-radius:50%; background:rgba(255,255,255,.12); border:1.5px solid rgba(255,255,255,.35); }
+.lines .ld.m1, .lines .ld.m2, .lines .ld.m3 { opacity:.92; }
+.lines .ld.today { opacity:1; color:var(--accent); }
+.lines .ld.today i { box-shadow:0 0 0 3px rgba(255,216,77,.45); }
+.lines .ld.m1 i { background:#b8743f; border-color:#d39463; }
+.lines .ld.m2 i { background:#c9d0da; border-color:#eef2f6; }
+.lines .ld.m3 i { background:#f2c140; border-color:#fff0b0; }
 .tomorrow { font-size:13px; margin:0 0 14px; color:var(--accent); opacity:.9; }
 
 /* ---------------- leaderboard (fleet style) ---------------- */
@@ -181,3 +207,13 @@ summary { cursor:pointer; font-size:13px; font-weight:700; padding:8px 0; color:
   color:var(--ink); padding:8px 10px; font-size:14px; }
 .lb-rename { margin-top:6px; }
 
+
+/* LANDSCAPE phones (2026-11-16 final): the screen is short, so nothing stacks over the skater —
+   callouts sit top-left under the score, the first-play coach sits bottom-centre between thumbs */
+@media (orientation: landscape) and (max-height: 520px) {
+  #callout { left:14px; top:calc(78px + var(--safe-t)); transform:scale(.9); transform-origin:left top; padding:6px 14px 7px; max-width:34vw; }
+  #callout.on { transform:scale(.9); }
+  #callout .ct { font-size:22px; }
+  #coach { top:auto; bottom:calc(16px + var(--safe-b)); font-size:13px; }
+  .backpill { top:auto; bottom:calc(60px + var(--safe-b)); }
+}

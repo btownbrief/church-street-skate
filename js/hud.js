@@ -52,13 +52,14 @@ export class Hud {
   }
   _nextCallout() {
     const c = this.queue.shift(); const el = this.el.callout;
-    if (!c) { el.classList.remove('on'); this._calloutT = 0; return; }
+    if (!c) { el.classList.remove('on'); this._calloutT = 0; document.body.classList.remove('co'); return; }
+    document.body.classList.add('co');                     // the coach steps aside while a callout is up
     el.className = 'on ' + c.cls;
     el.innerHTML = `<div class="ct"></div>${c.sub ? '<div class="cs"></div>' : ''}`;
     el.querySelector('.ct').textContent = c.title; if (c.sub) el.querySelector('.cs').textContent = c.sub;
     this._calloutT = CALLOUT_T;
   }
-  clearCallouts() { this.queue.length = 0; this._calloutT = 0; this.el.callout.className = ''; this.el.popups.innerHTML = ''; }
+  clearCallouts() { this.queue.length = 0; this._calloutT = 0; this.el.callout.className = ''; this.el.popups.innerHTML = ''; document.body.classList.remove('co'); }
 
   handle(ev, sk) {
     switch (ev.type) {
@@ -66,19 +67,22 @@ export class Hud {
       case 'bank': {
         // the payoff scales with the bank: small banks are small, big ones are BIG
         const cls = ev.total >= 5000 ? 'bank mega' : ev.total >= 2000 ? 'bank big' : ev.total >= 500 ? 'bank' : 'bank small';
-        this.popup(`+${ev.total.toLocaleString()}${ev.mult > 1 ? '  ×' + ev.mult : ''}`, cls, 50, 30);
+        this.popup(`+${ev.total.toLocaleString()}${ev.mult > 1 ? '  ×' + ev.mult : ''}`, cls, 50, 35);
         if (ev.spot) this.callout(ev.spot, 'spot bonus');
         break;
       }
       case 'bail': this.popup(ev.lost > 0 ? `BAIL  −${ev.lost.toLocaleString()}` : 'BAIL', 'bail', 50, 34); break;
       case 'spotFirst': this.callout(`NEW SPOT: ${ev.name}`, `+${ev.bonus} · ${sk.spotsHit.size}/${sk.spots.length} Burlington spots`); break;
       case 'land': if (ev.sketchy) this.popup('sketchy', 'sk', 50, 44); break;
-      case 'stomp': this.popup('STOMPED!', 'stomp', 50, 36); break;
+      case 'stomp': this.popup('STOMPED!', 'stomp', 50, 40); break;
       case 'gap': this.callout(ev.name.toUpperCase(), ev.first ? `NEW GAP · +${ev.pts}` : `+${ev.pts}`, 'gap'); break;
       case 'revert': this.popup('revert', 'sk', 50, 46); break;
       case 'maple': this.callout('THE MAPLE LEAF', 'signature trick', 'gold'); break;
-      case 'letter': this.callout(ev.run ? `${ev.ch}   +5s` : ev.ch, ev.run ? `B-T-O-W-N ${ev.n}/${ev.total} · +500` : `B-T-O-W-N · ${ev.n}/${ev.total}`, 'letter'); break;
-      case 'letters': this.callout('BTOWN!', `all five letters · +${ev.pts.toLocaleString()}`, 'gold'); break;
+      case 'letter':
+        if (!ev.run) { this.callout(ev.ch, `B-T-O-W-N · ${ev.n}/${ev.total}`, 'letter'); break; }
+        this.callout(`${ev.gold ? 'GOLD ' : ''}${ev.ch}   +${ev.secs}s`, `${ev.gold ? 'gold set ' + ev.set + ' · ' : 'B-T-O-W-N '}${ev.n}/${ev.total} · +${ev.pts.toLocaleString()}`, 'letter');
+        break;
+      case 'letters': this.callout(ev.set ? `GOLD BTOWN ×${ev.set + 1}` : 'BTOWN!', `${ev.set ? 'a full gold set' : 'all five letters'} · +${ev.pts.toLocaleString()}`, 'gold'); break;
     }
   }
 
@@ -91,7 +95,7 @@ export class Hud {
     this.el.timer.classList.add('on');
     this.el.timer.classList.toggle('low', lastCall);
   }
-  bumpTimer() { const t = this.el.timer; t.classList.remove('plus'); void t.offsetWidth; t.classList.add('plus'); }
+  bumpTimer(_secs) { const t = this.el.timer; t.classList.remove('plus'); void t.offsetWidth; t.classList.add('plus'); }
   // three chips under the clock; they turn green as the run clears them
   setGoals(goals, done) {
     if (!goals) { this.el.goals.innerHTML = ''; return; }
@@ -102,7 +106,7 @@ export class Hud {
   update(dt, sk, loc) {
     // score counts up
     const target = sk.score; if (this.shownScore !== target) { this.shownScore += Math.ceil((target - this.shownScore) * Math.min(1, dt * 8)); if (Math.abs(target - this.shownScore) < 2) this.shownScore = target; this.el.score.textContent = this.shownScore.toLocaleString(); }
-    const bestTxt = this.showBest ? 'best ' + sk.best.toLocaleString() : '';
+    const bestTxt = this.showBest && sk.best > 0 ? 'best ' + sk.best.toLocaleString() : '';
     if (this._best !== bestTxt) { this._best = bestTxt; this.el.best.textContent = bestTxt; }
     // combo — counted in place
     let nReal = 0, sum = 0;
@@ -141,10 +145,13 @@ export class Hud {
     if (this._special !== sp2) { this._special = sp2; this.el.special.style.width = sp2 + '%'; this.el.mSpecial.classList.toggle('full', sk.special >= 1); }
     // B-T-O-W-N dots
     if (this.letters) {
-      const key = this.letters.route + [...this.letters.got].sort().join('');
+      const L = this.letters, set = L.run ? L.set || 0 : 0, miss = L.missed || new Set();
+      const nx = L.run && L.next ? L.next.ch : '';
+      const key = L.route + set + [...L.got].sort().join('') + '|' + [...miss].sort().join('') + nx;
       if (key !== this._lettersKey) {
         this._lettersKey = key;
-        this.el.letters.innerHTML = this.letters.all.map(c => `<b class="${this.letters.got.has(c) ? 'got' : ''}">${c}</b>`).join('');
+        this.el.letters.classList.toggle('gold', set > 0);
+        this.el.letters.innerHTML = L.all.map(c => `<b class="${L.got.has(c) ? 'got' : miss.has(c) ? 'miss' : c === nx ? 'next' : ''}">${c}</b>`).join('') + (set > 0 ? `<i>×${set + 1}</i>` : '');
       }
     }
     // OLLIE CHARGE bar: yellow = how loaded the pop is, green = the extra the current speed adds

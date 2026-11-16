@@ -28,11 +28,18 @@ skate. Keyboard on desktop, touch stick + buttons on phones.
 A 3D skateboarding score attack. **Today's Line** is the main mode: one tap from the title,
 90 seconds on one of five lines through town (Mall Bomb, College Hill, City Hall, The
 Waterfront, Main Street) — a different one each day. Five B-T-O-W-N letters mark the line
-(a light column stands on the next one); each is +500 and +5 s. Three goals a day (from a pool
-of twelve, one easy, one medium, one hard) are +1,500 each and +5,000 for all three. The last
-20 seconds are **Last Call**: every bank counts double. Today's best, the all-time run best
-and a day streak are kept; the results card names tomorrow's line. The score goes to the
-monthly leaderboard (`church-street-skate`).
+(a light column stands on the next one); each is +500 and +5 s, and one you ride past is
+skipped instead of demanding a U-turn. Then the light turns **gold** and never goes out: gold
+B-T-O-W-N sets are laid one letter at a time along the street you are on (+750 each, +3 s,
+then +2, then +1, each set spaced further apart — the run gets harder the longer you last).
+Each line has two letter layouts and runs alternate between them. Three goals per run (one
+easy, one medium, one hard, from a pool of 21): a goal you clear is swapped for a new one on
+your next run that day. The last 30 seconds are **Last Call**: every bank counts double.
+Bronze / silver / gold **medals** per line (10k / 25k / 45k) show on the title as five dots;
+results name the next medal and the gap to it. Stopped or lost? A **Back to the line** pill
+puts you on your last letter (R on a keyboard). Today's best, the all-time run best and a day
+streak are kept; the results card names tomorrow's line. The score goes to the monthly
+leaderboard (`church-street-skate`).
 
 Score is THPS-style: trick base × combo length, banked when you settle. Repeating a trick
 pays less each time (first use ×1.5 FRESH, then ×1, ×0.7 … ×0.1), so variety is the way up.
