@@ -311,7 +311,7 @@ console errors on iOS UA when `navigator.vibrate` is undefined.
 ## Review after upgrade
 
 Played the branch fresh as a 390x844 touch phone (real CDP touches, Metal GL, about 10 finger
-updates a second): 9 full Today's Line runs across all five lines (`?day=0..4`), two of them
+updates a second): 8 full Today's Line runs across all five lines (`?day=0..4`), two of them
 back to back with Again, plus a gesture test of every trick on the two buttons, pause, Last
 Call, results, reload, free skate and one landscape pass. BEFORE is the advisor session above
 (live `main`). Three bots: "naive" pushes straight and taps, "follow" steers at the light,
@@ -342,7 +342,7 @@ again: same start, same letter spots, same three goals, most of them already tic
 
 ### What clearly improved
 
-- **Frozen skater is gone.** Not one stuck charge in 9 runs (was 3 of 4).
+- **Frozen skater is gone.** Not one stuck charge in 8 runs (was 3 of 4).
 - **First ten seconds.** Title is one button. First frame is the whole skater standing on open
   ground, clock stopped until you move (`sh-d0-a.png` frame 1; compare `sheetA1.png`).
 - **The line reads.** Mall Bomb centre line is brick and kickers, not walls. College Hill and
