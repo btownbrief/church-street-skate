@@ -9,6 +9,7 @@
 //   [nSeated .. nStatic)           busker / vendors / ambassador (animated in place)
 //   [nStatic .. nStatic+nWalk)     roaming pedestrians     (halved on degrade)
 import * as THREE from '../vendor/three.module.min.js';
+import { seeThrough } from './seethrough.js';
 import { clamp, lerp, rng, textTexture } from './util.js';
 
 const BOX = new THREE.BoxGeometry(1, 1, 1);
@@ -266,7 +267,7 @@ export function createNpcs(ctx) {
   const nC = cafes.reduce((a, c) => a + c.chairs.length, 0);
   const tableMesh = mk(tableGeo, lam({ color: 0x2b2b2e }), Math.max(1, nT), 'table');
   const chairMesh = mk(chairGeo, lam({ color: 0x232326 }), Math.max(1, nC), 'chair');
-  const umbMesh = mk(umbGeo, lam({ vertexColors: true }), Math.max(1, nT), 'umbrella');
+  const umbMesh = mk(umbGeo, seeThrough(lam({ vertexColors: true })), Math.max(1, nT), 'umbrella');
   tableMesh.castShadow = chairMesh.castShadow = umbMesh.castShadow = !!quality.shadows;
   tableMesh.receiveShadow = true;
 

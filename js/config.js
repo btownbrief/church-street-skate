@@ -20,20 +20,25 @@ export const CFG = {
   spinRate: 6.0,           // rad/s in air at full stick
   spinResponse: 14,        // how fast yawVel chases the stick in air (was 10 — spins start sooner)
   flipTime: 0.42,
-  // Tightened 8/24 (his call: "people should mostly land straight"): was 0.68 / 0.6 / 9,
-  // which stuck almost anything. Sideways is a slam again; big airs earn a little slack.
-  landTolerance: 0.55,     // rad (≈32°) between board yaw and velocity on landing
+  // 2026-11-16: the ASSIST makes people land straight; the game no longer slams them when it
+  // doesn't. Up to landTolerance is clean, up to landSlam is a sketchy (kept) landing, past
+  // that — truly sideways — is a slam. Was 0.55 clean / everything else a slam.
+  landTolerance: 0.80,     // rad (≈46°) between board yaw and velocity on landing
+  landSlam: 1.15,          // rad (≈66°) — beyond this the landing is a slam
   landToleranceBigAir: 0.35, // extra tolerance fraction earned by long airs (up to ≈43° total)
-  landAssistRate: 6,       // rad/s auto-align to the travel axis just before touchdown
-  landAssistHeight: 1.4,   // m above the ground where the assist kicks in
+  landAssistRate: 10,       // rad/s auto-align to the travel axis just before touchdown
+  landAssistHeight: 2.0,   // m above the ground where the assist kicks in
   grindSnapDist: 0.6, grindSnapAbove: 0.55, grindSnapBelow: 0.25,
   grindFriction: 0.35,
   balanceDrift: 0.9, balanceCorrect: 3.2, balanceLimit: 1,
-  bailTime: 1.6,
-  wallBailSpeed: 6.5,
+  bailTime: 0.9,
+  wallBailSpeed: 9,
   skaterRadius: 0.32,
   // camera
   camDist: 5.2, camHeight: 2.1, camLookAhead: 2.4, camFov: 62,
+  // portrait: a little further back, higher, and pitched down so the skater's feet sit at
+  // ~60% of the screen (above the thumbs) and the street ahead fills the view
+  camDistPortrait: 5.0, camHeightPortrait: 2.8, camLookAheadPortrait: 3.2, camLookYPortrait: -0.6,
   // scoring
   score: { ollie: 10, kickflip: 100, heelflip: 100, shoveit: 80, fsshoveit: 90, treflip: 300, varial: 220,
     hardflip: 260, varialkick: 220, inward: 260, laser: 340, backflip: 420,

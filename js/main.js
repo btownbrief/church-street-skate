@@ -12,6 +12,7 @@ import { Challenges } from './challenges.js';
 import { GapTracker } from './gaps.js';
 import { isMobile, isTouch, storeGet, storeSet } from './util.js';
 import { installDev } from './devhooks.js';
+import { updateHole } from './seethrough.js';
 import { lbEnabled, getName, playerId, submitScore, renamePlayer, fetchTop, monthLabel } from './leaderboard.js';
 
 const $ = (s) => document.querySelector(s);
@@ -33,7 +34,7 @@ scene.add(camera);
 const input = new Input();
 const audio = new Audio();
 let world, skater, mesh, follow, hud, chal, gaps, running = false, paused = false, last = performance.now(), fpsAcc = 0, fpsN = 0, lowFpsT = 0;
-let locTimer = 0, curLoc = '';
+let locTimer = 0, curLoc = '', freshT = 0;
 // 2-MINUTE RUN. main.js owns the whole thing: skate.js only ever sees a normal input
 // object, and never learns there is a clock.
 let mode = 'free', runLeft = 0, runOver = false, frozen = false;
@@ -67,6 +68,19 @@ async function boot() {
   installDev({ world, skater, follow, camera, renderer, scene, input, gaps, step: stepGame,
     setAutopilot: (f) => { autopilot = f; }, setTap: (f) => { evTap = f; },
     setRunning: (v) => { running = v; }, setLoc: (v) => { curLoc = v; }, getLoc: () => curLoc });
+  // window.__T — the polish-bar test hooks: start a mode, fast-forward, read state.
+  window.__T = {
+    start: (m = 'run') => start(m),
+    step: (ms = 16) => { const n = Math.max(1, Math.round(ms / 1000 * 60)); for (let i = 0; i < n; i++) if (running && !paused) stepGame(1 / 60, performance.now()); updateHole(camera, renderer, skater.pos, !window.__noHole); renderer.render(scene, camera); },
+    state: () => ({ mode, running, paused, runOver, runLeft: +runLeft.toFixed(2), score: skater.score, state: skater.state, speed: +skater.speed.toFixed(2),
+      pos: [+skater.pos.x.toFixed(2), +skater.pos.y.toFixed(2), +skater.pos.z.toFixed(2)], bails: skater.session.bails, tricks: skater.session.tricks }),
+    // where the skater is on screen (CSS px): feet, head, height — for readability checks
+    skaterBox: () => {
+      const f = new THREE.Vector3(skater.pos.x, skater.pos.y, skater.pos.z).project(camera), h = new THREE.Vector3(skater.pos.x, skater.pos.y + 1.75, skater.pos.z).project(camera);
+      const X = (v) => (v.x * 0.5 + 0.5) * innerWidth, Y = (v) => (1 - (v.y * 0.5 + 0.5)) * innerHeight;
+      return { feet: [Math.round(X(f)), Math.round(Y(f))], head: [Math.round(X(h)), Math.round(Y(h))], h: Math.round(Y(f) - Y(h)) };
+    },
+  };
 }
 
 function start(m = 'free') {
@@ -168,6 +182,8 @@ function stepGame(dt, now) {
     }
   }
   skater.events.length = 0;
+  // free skate has no run to reset trick staleness, so it wears off once a minute
+  if (mode === 'free') { freshT += dt; if (freshT > 60) { freshT = 0; skater.used.clear(); } }
   chal.update(dt, skater);
   for (const c of chal.justDone) { hud.callout('CHALLENGE: ' + c.name, chal.remaining ? `${chal.remaining} to go` : 'that is all of them'); audio.handle({ type: 'spotFirst' }); }
   chal.justDone.length = 0;
@@ -187,6 +203,7 @@ function frame(now) {
   let dt = Math.min(0.05, (now - last) / 1000); last = now;
   if (paused) return;
   if (!stepGame(dt, now)) return;
+  updateHole(camera, renderer, skater.pos, !window.__noHole);
   renderer.render(scene, camera);
   // adaptive quality
   fpsAcc += dt; fpsN++;

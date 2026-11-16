@@ -299,10 +299,9 @@ export function buildSkatepark(ctx) {
         const yaw = yawFwd(p.tx * fwdAlong, p.tz * fwdAlong);
         fn(p.x, p.z, yaw);
       };
-      // quarter pipes capping both ends of the block, facing into it — taller and wider
-      // than v1 (the old 1.8 m faces barely popped)
-      put(S(0) + 5.6, 0, -1, (x, z, yaw) => quarter(x, z, yaw, 4.4, 2.1, 'Mall quarter'));
-      put(S(1) - 5.6, 0, 1, (x, z, yaw) => quarter(x, z, yaw, 4.4, 2.1, 'Mall quarter'));
+      // (2026-11-16) The quarter pipes that capped both ends of every block are gone: they
+      // were eight walls across the one street the player is told to skate. Transitions live
+      // in City Hall Park and Battery Park.
       // kickers mid-block, one each way — steeper faces (h up, run down) for real pop
       put(S(0.30), 0, 1, (x, z, yaw) => kicker(x, z, yaw, 2.6, 1.25, 2.3, 'Mall kicker'));
       put(S(0.70), 0, -1, (x, z, yaw) => kicker(x, z, yaw, 2.6, 1.25, 2.3, 'Mall kicker'));
@@ -313,9 +312,10 @@ export function buildSkatepark(ctx) {
       const rs = bl.i % 2 ? 1 : -1;
       put(S(0.22), rs * 2.6, 1, (x, z, yaw) => rail(x, z, yaw, 14, 0.55, 'Mall rail'));
       put(S(0.78), -rs * 2.6, 1, (x, z, yaw) => rail(x, z, yaw, 14, 0.55, 'Mall rail'));
-      // manual pads near the block mouths
-      put(S(0.11), 0, 1, (x, z, yaw) => manualPad(x, z, yaw, 2.2, 4.5, 'Manual pad'));
-      put(S(0.89), 0, 1, (x, z, yaw) => manualPad(x, z, yaw, 2.2, 4.5, 'Manual pad'));
+      // manual pads near the block mouths, in the rail lanes opposite each rail, so the
+      // granite centre line is clean brick between the kickers
+      put(S(0.11), -rs * 2.6, 1, (x, z, yaw) => manualPad(x, z, yaw, 2.2, 4.5, 'Manual pad'));
+      put(S(0.89), rs * 2.6, 1, (x, z, yaw) => manualPad(x, z, yaw, 2.2, 4.5, 'Manual pad'));
     }
     if (BLOCKS.length > 1) {
       const c = posAt((BLOCKS[1].a + BLOCKS[1].b) / 2, 0);

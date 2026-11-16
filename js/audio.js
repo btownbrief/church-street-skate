@@ -42,6 +42,7 @@ export class Audio {
       case 'spotFirst': [0, 90, 180, 270].forEach((d, i) => setTimeout(() => this._blip(523 * Math.pow(2, i / 12 * 4), 0.12, 'triangle', 0.12), d)); break;
       case 'grindStart': this._thud(0.4, 0.06, 2500); break;
       case 'bump': this._thud(0.3, 0.1, 600); break;
+      case 'clack': this._thud(0.28, 0.07, 2200); this._blip(340, 0.05, 'square', 0.04, -120); break;
       case 'honk': this._blip(440, 0.35, 'sawtooth', 0.12); this._blip(554, 0.35, 'sawtooth', 0.1); break;
     }
   }

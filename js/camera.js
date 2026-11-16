@@ -21,8 +21,12 @@ export class FollowCamera {
     if (sk.state === 'grind') target = yawOf(sk.vel.x, sk.vel.z);
     const rate = sk.state === 'air' ? 1.8 : sk.state === 'bail' ? 0.8 : clamp(2 + sp * 0.35, 2, 6);
     this.yaw = this.first ? target : dampAngle(this.yaw, target, rate, dt);
-    const dist = (this.mode === 1 ? 3.6 : this.mode === 2 ? 7.5 : CFG.camDist) + clamp(sp - 6, 0, 14) * 0.22;
-    const height = (this.mode === 2 ? 4.2 : CFG.camHeight) + (sk.state === 'air' ? 0.3 : 0);
+    // PORTRAIT (a phone held upright) frames tighter and higher: the skater reads ~100 px tall
+    // at 390x844 with his feet above the thumbs, instead of a 50 px hat at the bottom.
+    const portrait = this.cam.aspect < 1;
+    const baseDist = portrait ? CFG.camDistPortrait : CFG.camDist;
+    const dist = (this.mode === 1 ? 3.6 : this.mode === 2 ? 7.5 : baseDist) + clamp(sp - 6, 0, 14) * (portrait ? 0.14 : 0.22);
+    const height = (this.mode === 2 ? 4.2 : portrait ? CFG.camHeightPortrait : CFG.camHeight) + (sk.state === 'air' ? 0.3 : 0);
     fwd(this.yaw, _f);
     let px = sk.pos.x - _f.x * dist, pz = sk.pos.z - _f.z * dist;
     // line of sight: shorten if a wall sits between the skater and the camera point
@@ -38,8 +42,8 @@ export class FollowCamera {
     this.pos.z += (pz - this.pos.z) * (this.first ? 1 : 1 - Math.exp(-8 * dt));
     this.pos.y += (py - this.pos.y) * k;
     // look target ahead of the skater
-    const la = CFG.camLookAhead + sp * 0.12;
-    const lx = sk.pos.x + _f.x * la, ly = sk.pos.y + 0.9 + (sk.state === 'air' ? 0.4 : 0), lz = sk.pos.z + _f.z * la;
+    const la = (portrait ? CFG.camLookAheadPortrait : CFG.camLookAhead) + sp * 0.12;
+    const lx = sk.pos.x + _f.x * la, ly = sk.pos.y + (portrait ? CFG.camLookYPortrait : 0.9) + (sk.state === 'air' ? 0.4 : 0), lz = sk.pos.z + _f.z * la;
     this.look.x += (lx - this.look.x) * (this.first ? 1 : 1 - Math.exp(-10 * dt));
     this.look.y += (ly - this.look.y) * (this.first ? 1 : 1 - Math.exp(-6 * dt));
     this.look.z += (lz - this.look.z) * (this.first ? 1 : 1 - Math.exp(-10 * dt));

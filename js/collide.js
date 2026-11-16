@@ -4,6 +4,7 @@
 import { clamp, segT } from './util.js';
 
 const CELL = 8;
+const SOFT = /^(Bollard|Granite post|Trash|Sandwich board|Bike rack|Bike|Hydrant|Pay station|Bowl planter)$/;
 
 class Grid {
   constructor() { this.m = new Map(); }
@@ -80,7 +81,11 @@ export class CollisionWorld {
     this.ramps.insert(o, Math.min(o.ax, o.bx) - hw, Math.min(o.az, o.bz) - hw, Math.max(o.ax, o.bx) + hw, Math.max(o.az, o.bz) + hw);
     this.all.ramps.push(o); return o;
   }
-  addBlocker(b) { const o = { type: 'blocker', x: b.x, z: b.z, r: b.r || 0.25, name: b.name || null, top: b.top ?? 1e9 }; this.blockers.insert(o, o.x - o.r, o.z - o.r, o.x + o.r, o.z + o.r); this.all.blockers.push(o); return o; }
+  // SOFT blockers are the knee-high street clutter (bollards, trash cans, sandwich boards…):
+  // the skater clacks through them and loses a little speed instead of stopping dead or
+  // slamming. Trees, lamp posts, walls and cars stay solid. Builders may pass soft explicitly;
+  // otherwise the name decides.
+  addBlocker(b) { const o = { type: 'blocker', x: b.x, z: b.z, r: b.r || 0.25, name: b.name || null, top: b.top ?? 1e9, soft: b.soft ?? SOFT.test(b.name || '') }; this.blockers.insert(o, o.x - o.r, o.z - o.r, o.x + o.r, o.z + o.r); this.all.blockers.push(o); return o; }
 
   // ---- queries ------------------------------------------------------------
   // local coords of point in a surface's frame
@@ -160,9 +165,11 @@ export class CollisionWorld {
       if (!hit || push > hit.push) { hit = out || {}; hit.nx = wx; hit.nz = wz; hit.push = push; hit.obj = s; }
     }
     const bs = this.blockers.query(pos.x - r, pos.z - r, pos.x + r, pos.z + r, this._tmp);
+    this.softHit = null;
     for (const b of bs) {
       if (y > b.top) continue;
       let dx = pos.x - b.x, dz = pos.z - b.z; const d = Math.hypot(dx, dz); const rr = r + b.r; if (d >= rr) continue;
+      if (b.soft) { this.softHit = b; continue; }
       if (d < 1e-4) { dx = 1; dz = 0; } else { dx /= d; dz /= d; }
       const push = rr - d; pos.x += dx * push; pos.z += dz * push;
       if (!hit || push > hit.push) { hit = out || {}; hit.nx = dx; hit.nz = dz; hit.push = push; hit.obj = b; }

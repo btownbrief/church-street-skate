@@ -40,7 +40,7 @@ export function installDev(api) {
   window.__air = (x, y, z, yaw, vx, vy, vz) => {
     skater.respawn(x, y, z, yaw);
     skater.state = 'air'; skater.onGround = false; skater.airTime = 0; skater.airPeak = y;
-    skater.vel.set(vx, vy, vz); skater.lastEdge = null; skater.grindCooldown = 0;
+    skater.vel.set(vx, vy, vz); skater.lastEdge = null; skater.grindCooldown = 0; skater._takeoffY = y; skater._slowPop = false;
     follow.reset(skater);
   };
 
@@ -156,6 +156,8 @@ export function installDev(api) {
   window.__flickSeq = (pts, lift = true) => { for (const p of pts) input.flick.sample(p[0], p[1], 1 / 60); if (lift) input.flick.release(); };
   window.__flickState = () => ({ combo: input.flick.combo.slice(), charging: input.flick.charging, locked: input.flick.locked, ollie: input.ollie });
 
+  // analog input override for tests: __hold({ steer: 0.5, throttle: 1 }) until __hold(null)
+  window.__hold = (o) => api.setAutopilot(o ? (inp) => { if ('steer' in o) inp.steer = o.steer; if ('throttle' in o) inp.throttle = o.throttle; if ('grab' in o) inp.grab = o.grab; } : null);
   window.__recOn = () => { window.__rec = []; api.setTap((ev) => { window.__rec.push(Object.assign({}, ev)); }); };
   window.__recOff = () => { api.setTap(null); window.__rec = []; };
   window.__rec = [];

@@ -134,7 +134,7 @@ checks.revert = async () => {
 // ------------------------------------------------- 4. COPING STALL vs GRIND ----
 checks.stall = async () => {
   const r = await ev(() => {
-    const cop = window.__world.collide.all.edges.filter(e => /Mall quarter coping/.test(e.name || ''))[0];
+    const cop = window.__world.collide.all.edges.filter(e => /Battery vert coping/.test(e.name || ''))[0];
     const mx = (cop.ax + cop.bx) / 2, mz = (cop.az + cop.bz) / 2, my = (cop.ay + cop.by) / 2;
     const dx = (cop.bx - cop.ax) / cop.len, dz = (cop.bz - cop.az) / cop.len;
     const run = (alongSpeed) => {

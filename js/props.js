@@ -16,6 +16,7 @@
 // One vertex-coloured material carries almost everything, so a whole prop type (or a whole
 // pile of unrelated one-offs) costs a single draw call.
 import * as THREE from '../vendor/three.module.min.js';
+import { seeThrough } from './seethrough.js';
 import { rng as makeRng } from './util.js';
 
 export function buildProps(ctx) {
@@ -93,6 +94,7 @@ export function buildProps(ctx) {
   const MATE = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide });
   const MATG = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: 0.32, side: THREE.DoubleSide, depthWrite: false });
   const MATD = new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
+  seeThrough(MATP); seeThrough(MATB);   // canopies, banners, bunting never hide the skater
 
   const solids = [], fabric = [], emis = [], glass = [], decals = [];
   const lights = [], glows = [];

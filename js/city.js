@@ -12,6 +12,7 @@
 // reaching 2.7 m out (the Marketplace "9-ft line"), posts there are collidable blockers.
 
 import * as THREE from '../vendor/three.module.min.js';
+import { seeThrough } from './seethrough.js';
 import { hashStr, rng, polyArea, pointInPoly, segT } from './util.js';
 
 // ---------------------------------------------------------------------------
@@ -644,7 +645,7 @@ export function buildCity(ctx) {
   for (const s of styles) if (!facBuf[s].empty) addMesh(facBuf[s].geometry(), facMat[s], true, 'facade:' + s);
   if (!trim.empty) addMesh(trim.geometry(), new THREE.MeshLambertMaterial({ vertexColors: true }), true, 'trim');
   if (!glass.empty) addMesh(glass.geometry(), new THREE.MeshBasicMaterial({ vertexColors: true }), false, 'glass');
-  if (!awn.empty) addMesh(awn.geometry(), new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), true, 'awning');
+  if (!awn.empty) addMesh(awn.geometry(), seeThrough(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide })), true, 'awning');
   if (!cano.empty) {
     const m = addMesh(cano.geometry(), new THREE.MeshLambertMaterial({
       vertexColors: true, transparent: true, opacity: 0.32, side: THREE.DoubleSide, depthWrite: false,
