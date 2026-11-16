@@ -524,7 +524,7 @@ seven times a run.
    "0 × 1" combo line for a spin with no trick. BAIL text drawn over STOMPED and bank popups
    (`s-d0f-d.png` frame 3). A sandwich board next to the lens fills the bottom of the screen
    (`s-d2f.png` frame 2). The Waterfront starts facing uphill. If a script fails to load, the
-   title sits on "Building Burlington…" for ever with no retry (4 of 16 boots on my overloaded
+   title sits on "Building Burlington…" for ever with no retry (6 of 20 boots on my overloaded
    local server; a harness artefact, but a phone on bad signal gets the same dead screen).
    There is still no ticker script tag in this repo or on the live page; the guarded
    `BtownTicker.hide()/show()` calls are there.
