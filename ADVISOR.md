@@ -307,3 +307,128 @@ console errors on iOS UA when `navigator.vibrate` is undefined.
 10. **Regression:** `node scripts/playtest.mjs` and `node scripts/feature-checks.mjs` pass
     (update the checks that assumed 120 s, the quarter pipes or the old landing tolerance); no
     console errors; mobile tier ≤ 110 draw calls.
+
+## Review after upgrade
+
+Played the branch fresh as a 390x844 touch phone (real CDP touches, Metal GL, about 10 finger
+updates a second): 9 full Today's Line runs across all five lines (`?day=0..4`), two of them
+back to back with Again, plus a gesture test of every trick on the two buttons, pause, Last
+Call, results, reload, free skate and one landscape pass. BEFORE is the advisor session above
+(live `main`). Three bots: "naive" pushes straight and taps, "follow" steers at the light,
+"tricky" uses full charges, double-taps and held TRICK. Scripts, logs and contact sheets are
+in `/tmp/upgrade-church-street-skate/review/` (`sh-d0-a.png` … `sh-d4.png`, `sh-misc.png`).
+No console errors in any session. 60 fps, 98 draw calls on the mall.
+
+### Verdict
+
+It is a different game, and a much better one, for the first 40 seconds of every run. One tap,
+a huge readable skater on open ground, a light to chase, letters that pay time, two buttons
+that do everything. Then the fifth letter is collected, the light goes out, and the remaining
+50–70 seconds are the old aimless free skate with a clock on it. That back half is where the
+bails, the walls, the alleys and the boredom all live. And inside one day, run 2 is run 1
+again: same start, same letter spots, same three goals, most of them already ticked.
+
+### Scores (1–10), before → now
+
+| | Before | Now | Why |
+|---|---|---|---|
+| Fun | 5 | 7 | Chasing the light down Main St or the mall at 40 mph is the game it should be. Fun drops off a cliff once the letters are gone. |
+| Difficulty curve | 3 | 5 | The line itself is fair now: 0–2 bails while following letters. After that 9–12 bails a run, and nothing ever gets harder. Goals are one-gesture easy. |
+| Readability | 4 | 7 | On the line: skater 80–200 px, 5 HUD items, clear street. Off it the camera still collapses (skater 750 px tall, or a screen of grey). |
+| Taste / Looks | 6 | 7 | Title, HUD, results and pause are clean and consistent. STOMPED spam and big white squares are the tacky bits. |
+| Phone feel | 4 | 8 | Two buttons, every trick reachable, layout stable, Again is one tap. Best single improvement of the round. |
+| Variety | 4 | 6 | Five real lines across the week. Within a day nothing varies, and the second half of every run is identical wandering. |
+| Reason to return | 3 | 6 | A new line tomorrow, today's best, a streak. But goals are done on run 1, the streak is hidden until day 2, and there is no next rung to climb. |
+
+### What clearly improved
+
+- **Frozen skater is gone.** Not one stuck charge in 9 runs (was 3 of 4).
+- **First ten seconds.** Title is one button. First frame is the whole skater standing on open
+  ground, clock stopped until you move (`sh-d0-a.png` frame 1; compare `sheetA1.png`).
+- **The line reads.** Mall Bomb centre line is brick and kickers, not walls. College Hill and
+  Main Street on the road are the best-looking frames in the game (`sh-d1-a.png` 2–3, `sh-d4.png` 1–2).
+- **Two buttons work.** Real-touch test, 5 tries each: tap = Kickflip, double-tap = 360 Flip,
+  held TRICK through a landing = Manual, gold bar + double-tap = The Maple Leaf (3 of 3), full
+  stick + ollie = 540 (4 of 4, clean), stick down in the air = Backflip (4 of 4).
+- **Fair while you are on the line.** Follow bot: 2 bails in the first 42 s on Main Street, 0
+  spin slams from a steering thumb. Soft props clack instead of slamming.
+- **Scores mean something.** Naive straight-line play 2.9k–3.8k; following the light 7k–23k;
+  using the trick buttons well 31k. Standing still no longer wins.
+- **Run structure.** Letters add time, Last Call turns the clock red, results count up, name
+  tomorrow's line, and Again restarts in one tap with one frame loop (4 retries, no slowdown).
+- **Saves and board.** New keys only; `js/leaderboard.js` has no diff against `main`; game id
+  unchanged. Network to the board was blocked in my sessions so test scores never reached it;
+  the submit path was read, not exercised live.
+
+### Still weak or broken
+
+1. **The run runs out of game.** Letters were all collected with 60–78 s still on the clock in
+   every follow run. After that: Mall Bomb scored 21,900 by 1:00 left and 23,019 at the buzzer
+   (1,100 points in the last minute); Waterfront 12,920 → 14,664; Main Street 8,860 → 11,287.
+   Last Call doubles banks of 20. Letters + goals are 60–90% of a casual score.
+2. **Run 2 is run 1.** Same start, same five letter spots, same three goals, already ticked.
+   College Hill and Mall Bomb had all three goals cleared on the first run by a bot. The goal
+   pool is 12 single-gesture items; "Collect all five letters" is the hard goal on 8 of the
+   next 15 days and happens by itself.
+3. **Leaving the street is a trap.** (a) The west map edge is an invisible wall that multiplies
+   speed by 0.2 every frame (`world.js` `confine`): the Bluff Bomber on today's Waterfront line
+   sends you into it, and the follow bot stood at 0 mph on the grass at (−643, −333) for the
+   last 40 s (`sh-d3-b.png`). Pushing north, south or west there ends at 0.04 m/s. (b) City Hall:
+   overshoot the steps, cross Main St, and you are in an alley at (−30, 164) with the last
+   letter behind a building — 60 s, 127 bumps (`sh-d2-b.png`). (c) College Hill: 40 s on a lawn
+   behind buildings near (−360, −20). A missed letter (2.0 m reach at 20 m/s) forces a U-turn
+   uphill because the light only ever points at the next one in order. There is no touch
+   control to get back to the line.
+4. **Camera collapses near walls.** In that alley the skater is 670–790 px tall — the whole
+   screen is his jacket for most of a minute. At Battery Park one frame is solid grey
+   (`sh-d3-a.png` frame 6); on the mall the lens ends up inside a brick wall (`sh-d0-b.png` frame 1).
+5. **STOMPED! is noise.** 8–16 a run. It fired at score 0 for rolling over a funbox with no
+   trick, and on +20 kickflips. Its burst is ~30 big white squares drawn over the stick and
+   buttons (`sh-d1-a.png` frame 6, `sh-d4.png` frame 3). Also a free-skate "CHALLENGE: COLLECT
+   B-T-O-W-N · 12 to go" card appeared mid-run on top of it (`sh-d3-a.png` frame 8).
+6. **No ramp, no next rung.** Second 80 is exactly as hard as second 5. Results show a number
+   and nothing to aim at except beating it.
+
+Smaller: landscape hides the skater behind the callout stack (`sh-land.png`); free skate still
+spawns facing a kicker with bunting across the view; the letter tray is nearly invisible until
+a letter is lit; the B-T-O-W-N letters and the Waterfront road are visually flat next to the
+mall. There is no ticker script tag in this repo or on the live page, so none was added; the
+guarded `BtownTicker.hide()/show()` calls are in place.
+
+### FINAL PUNCH LIST (ranked by impact)
+
+1. **Never let the light go out.** When the fifth letter is collected, lay a second set
+   further along the same line (a `letters2` array per line in `daily.js`, gold, +750 and +5 s
+   each, then a third set looping back to the start). Raise `RUN_REACH` 2.0 → 3.5 m, and if the
+   skater passes a letter by more than 15 m the beacon moves to the next one instead of
+   demanding a U-turn. Check: in a follow-bot run the beacon is visible in every 8 s screenshot
+   until the buzzer, and the last 30 s score at least 25% of the run.
+2. **Make run 2 different from run 1.** (a) Goals rotate: when a goal is cleared today, the
+   next run swaps in the next unused goal of that tier (store cleared ids in `css-daily`), so
+   three open chips always show. (b) Grow the pool to ~20 with real hard ones: 5,000 combo,
+   2-car hop, grind 5 s, two gaps in one run, a 720, letters with no bail. Drop "Collect all
+   five letters" from the hard tier. (c) Two letter layouts per line, alternating by run number
+   (B puts letters over the kickers and in the rail lanes). Check: three Again runs in a row
+   show three different chip sets and two letter layouts.
+3. **Always a way back, and no glue at the map edge.** `confine`: reflect the velocity (keep
+   60%) and turn the skater to face inward instead of `×0.2` every frame. Add a touch "BACK TO
+   LINE" pill that fades in when speed stays under 1.5 m/s for 2 s or the skater is more than
+   45 m from the nearest letter segment for 4 s: one tap respawns at the last collected letter
+   facing the next, clock still running, combo dropped. Check: `__tp(-643,-333)` then push
+   north for 4 s ends above 5 m/s; the pill appears in the City Hall alley and on the College
+   lawn and returns the skater to the line.
+4. **Camera never eats the screen.** In `camera.js`, when a wall blocks the boom, lift the
+   camera up (to 6 m) before pulling it in, never closer than 3.0 m, and apply the see-through
+   hole to building walls that sit between lens and skater. Check: at (−30, 164), (29, 92) and
+   the Battery Park ramp the skater is 90–220 px tall and fully visible from all four yaws.
+5. **Make STOMPED! rare and clean.** Fire it only when the air was a real one (height > 2.4 m
+   and airtime > 0.95 s) and the banked combo is at least 300; target 2–4 a run. Burst: 10–12
+   small tan dust puffs at 40% of today's size that fade in 0.4 s. Mute free-skate challenge
+   callouts while `mode === 'run'`. Check: pushing over a mall funbox with no trick shows no
+   callout; no white squares overlap the stick or buttons in 20 screenshots.
+6. **Give the score a ladder and the clock a finish.** Per-line medals (bronze 8k, silver 18k,
+   gold 30k; new key `css-medals`): results show the next medal and the gap to it ("gold in
+   4,200"), the title shows five small line dots coloured by best medal and the streak from day
+   1. For the ramp, Last Call starts at 0:30 and also wakes the street up (traffic and
+   pedestrian density ×1.5 until the buzzer). Check: results after an 11k run reads "silver in
+   6,7xx"; title shows 5 dots; a reload keeps them.
